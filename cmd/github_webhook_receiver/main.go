@@ -101,14 +101,18 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 
 		data.Set("payload", `{"text": "`+msg+`"}`)
 
-		resp, err := http.PostForm(url, data)
-		if err != nil {
-			http.Error(w, "Bad post to slack", http.StatusInternalServerError)
-			fmt.Println("Failed post to slack", err)
-			return
+		if url != "" {
+			resp, err := http.PostForm(url, data)
+			if err != nil {
+				http.Error(w, "Bad post to slack", http.StatusInternalServerError)
+				fmt.Println("Failed post to slack", err)
+				return
+			}
+			fmt.Println()
+			fmt.Println(resp.Status, resp.StatusCode)
+		} else {
+			fmt.Println(data)
 		}
-		fmt.Println()
-		fmt.Println(resp.Status, resp.StatusCode)
 
 	default:
 		fmt.Println("Unsupported event type")
