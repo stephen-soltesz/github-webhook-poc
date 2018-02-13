@@ -6,7 +6,10 @@ package main
 import (
 	"fmt"
 	"html"
+	"io/ioutil"
 	"net/http"
+	"net/url"
+	"os"
 
 	"github.com/google/go-github/github"
 	"github.com/kr/pretty"
@@ -26,6 +29,19 @@ func supportedEvent(events []string, supported string) bool {
 		}
 	}
 	return false
+}
+
+func getZenMessage(url string) string {
+	resp, err := http.Get(url)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func eventHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +66,8 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 		// Ping events occur during first registration.
 		// If we return without error, the webhook is registered successfully.
 		if !supportedEvent(event.Hook.Events, "issue_comment") &&
-			!supportedEvent(event.Hook.Events, "issues") {
+			!supportedEvent(event.Hook.Events, "issues") &&
+			!supportedEvent(event.Hook.Events, "pull_request") {
 			fmt.Println("Unsupported event types", event.Hook.Events)
 			http.Error(w, "Unsupported event type", http.StatusNotImplemented)
 		}
@@ -65,6 +82,33 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 	case *github.IssuesEvent:
 		// TODO: detect close events.
 		pretty.Print(event)
+
+	case *github.PullRequestEvent:
+		pretty.Print(event)
+		// req := pretty.Sprint(event)
+		data := url.Values{}
+		url := os.Getenv("SLACK_DEST_URL")
+
+		pretty.Print(event.PullRequest.Assignees)
+		pretty.Print(event.PullRequest.RequestedReviewers)
+		msg := "PR: " + event.GetAction() + " " + event.PullRequest.GetHTMLURL()
+		msg += "\nRequested by: " + event.PullRequest.User.GetLogin()
+		fmt.Println(msg)
+		if len(event.PullRequest.RequestedReviewers) != 0 {
+			msg += "\nAssigned to: " + event.PullRequest.RequestedReviewers[0].GetLogin()
+			msg += "\nReview meditation: " + getZenMessage("https://api.github.com/zen")
+		}
+
+		data.Set("payload", `{"text": "`+msg+`"}`)
+
+		resp, err := http.PostForm(url, data)
+		if err != nil {
+			http.Error(w, "Bad post to slack", http.StatusInternalServerError)
+			fmt.Println("Failed post to slack", err)
+			return
+		}
+		fmt.Println()
+		fmt.Println(resp.Status, resp.StatusCode)
 
 	default:
 		fmt.Println("Unsupported event type")
