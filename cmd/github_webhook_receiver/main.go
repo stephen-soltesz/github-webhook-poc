@@ -55,6 +55,7 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "payload did not validate", http.StatusInternalServerError)
 		return
 	}
+	// fmt.Println(string(payload))
 	event, err := github.ParseWebHook(github.WebHookType(r), payload)
 	if err != nil {
 		http.Error(w, "failed to parse webhook", http.StatusInternalServerError)
@@ -84,20 +85,33 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 		pretty.Print(event)
 
 	case *github.PullRequestEvent:
-		pretty.Print(event)
+		// pretty.Print(event)
 		// req := pretty.Sprint(event)
 		data := url.Values{}
 		url := os.Getenv("SLACK_DEST_URL")
 
 		pretty.Print(event.PullRequest.Assignees)
-		pretty.Print(event.PullRequest.RequestedReviewers)
-		msg := "PR: " + event.GetAction() + " " + event.PullRequest.GetHTMLURL()
-		msg += "\nRequested by: " + event.PullRequest.User.GetLogin()
+		pretty.Print(event.RequestedReviewer)
+		msg := ""
+		switch event.GetAction() {
+		case "review_requested":
+			msg = fmt.Sprintf("%s added %s as a reviewer on: %s",
+				event.PullRequest.User.GetLogin(),
+				event.RequestedReviewer.GetLogin(),
+				event.PullRequest.GetHTMLURL())
+		case "review_request_removed":
+			msg = fmt.Sprintf("%s removed %s as a reviewer on: %s",
+				event.PullRequest.User.GetLogin(),
+				event.RequestedReviewer.GetLogin(),
+				event.PullRequest.GetHTMLURL())
+		default:
+			msg += event.GetAction()
+		}
 		fmt.Println(msg)
-		if len(event.PullRequest.RequestedReviewers) != 0 {
+		/*if len(event.PullRequest.RequestedReviewers) != 0 {
 			msg += "\nAssigned to: " + event.PullRequest.RequestedReviewers[0].GetLogin()
 			msg += "\nReview meditation: " + getZenMessage("https://api.github.com/zen")
-		}
+		}*/
 
 		data.Set("payload", `{"text": "`+msg+`"}`)
 
