@@ -15,6 +15,14 @@ import (
 	"github.com/kr/pretty"
 )
 
+var (
+	slackURL string
+)
+
+func init() {
+	slackURL = os.Getenv("SLACK_DEST_URL")
+}
+
 func setupRoutes() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
@@ -85,13 +93,7 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 		pretty.Print(event)
 
 	case *github.PullRequestEvent:
-		// pretty.Print(event)
-		// req := pretty.Sprint(event)
 		data := url.Values{}
-		url := os.Getenv("SLACK_DEST_URL")
-
-		pretty.Print(event.PullRequest.Assignees)
-		pretty.Print(event.RequestedReviewer)
 		msg := ""
 		switch event.GetAction() {
 		case "review_requested":
@@ -105,18 +107,16 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 				event.RequestedReviewer.GetLogin(),
 				event.PullRequest.GetHTMLURL())
 		default:
-			msg += event.GetAction()
+			fmt.Printf("Ignoring action: %q\n", event.GetAction())
+			pretty.Println(event.Action)
+			pretty.Println(event.Sender.Login)
+			return
 		}
 		fmt.Println(msg)
-		/*if len(event.PullRequest.RequestedReviewers) != 0 {
-			msg += "\nAssigned to: " + event.PullRequest.RequestedReviewers[0].GetLogin()
-			msg += "\nReview meditation: " + getZenMessage("https://api.github.com/zen")
-		}*/
 
 		data.Set("payload", `{"text": "`+msg+`"}`)
-
-		if url != "" {
-			resp, err := http.PostForm(url, data)
+		if slackURL != "" {
+			resp, err := http.PostForm(slackURL, data)
 			if err != nil {
 				http.Error(w, "Bad post to slack", http.StatusInternalServerError)
 				fmt.Println("Failed post to slack", err)
@@ -124,10 +124,8 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Println()
 			fmt.Println(resp.Status, resp.StatusCode)
-		} else {
-			fmt.Println(data)
 		}
-
+		fmt.Println(data)
 	default:
 		fmt.Println("Unsupported event type")
 		http.Error(w, "Unsupported event type", http.StatusNotImplemented)
