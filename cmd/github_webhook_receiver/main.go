@@ -202,15 +202,12 @@ func (l *localClient) eventHandler(w http.ResponseWriter, r *http.Request) {
 	case *github.IssuesEvent:
 		// TODO: detect close events.
 		var err error
-		switch event.GetAction() {
-		case "opened":
-			log.Println("issue opened:", event.GetIssue().GetNumber())
+		switch {
+		case event.GetAction() == "opened" || event.GetAction() == "reopened":
+			log.Println("issue opened:", event.GetIssue().GetHTMLURL())
 			err = l.addLabel(event, "review/triage")
-		case "reopened":
-			log.Println("issue reopened:", event.GetIssue().GetNumber())
-			err = l.addLabel(event, "review/triage")
-		case "closed":
-			log.Println("issue closed:", event.GetIssue().GetNumber())
+		case event.GetAction() == "closed":
+			log.Println("issue closed:", event.GetIssue().GetHTMLURL())
 			err = l.rmLabel(event, "review/triage")
 		}
 		if err != nil {
