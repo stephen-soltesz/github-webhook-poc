@@ -1,17 +1,13 @@
 // github_webhook_receiver is a proof of concept for creating a github
-// webhook using the go-github package. github_webhook_receiver only supports
-// issue events.
+// webhook that automatically adds and removes labels from issues.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
-	"html"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 
 	"github.com/google/go-github/github"
@@ -20,27 +16,56 @@ import (
 )
 
 var (
-	slackURL     string
-	authToken    string
-	fGithubOwner string
-	fGithubRepo  string
+	authToken     string
+	webhookSecret string
+	fListenAddr   string
 )
 
 const (
 	usage = `
 USAGE:
 
-Github receiver requires a github GITHUB_AUTH_TOKEN and target github --owner
-and --repo names.
+  GitHub webhook receiver requires two environment variables at runtime:
+
+   * GITHUB_AUTH_TOKEN - to authenticate with the GitHub API
+   * GITHUB_WEBHOOK_SECRET - to validate the registered webhook
+
+ALLOCATE AUTH TOKEN:
+
+  Allocate a "Personal Access Token" by visiting github.com:
+
+   * https://github.com/settings/tokens
+
+REGISTER WEBHOOK:
+
+  Register the webhook by visiting your repo on github.com. Click "Settings"
+  and then "Webhooks". You should land on a URL like:
+
+   * https://github.com/<owner>/<repo>/settings/hooks
+
+  Click "Add Webhook".
+
+  Use the payload URL (note the "/event_handler" path):
+
+   * Payload URL: https://<service-url>/event_handler
+   * Secret: value matching the environment variable GITHUB_WEBHOOK_SECRET
+   * Select "Let me select individual events."
+   * Check "Issues".
+   * Uncheck "Pushes".
+   * Click the green "Add Webhook" button.
+
+  If the registration was successful, there should be a green checkmark. If
+  registration failed, there will be a red "X".
+
+FLAGS:
 
 `
 )
 
 func init() {
-	slackURL = os.Getenv("SLACK_DEST_URL")
 	authToken = os.Getenv("GITHUB_AUTH_TOKEN")
-	flag.StringVar(&fGithubOwner, "owner", "", "The github user or organization name.")
-	flag.StringVar(&fGithubRepo, "repo", "", "The repository where issues are created.")
+	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
+	flag.StringVar(&fListenAddr, "addr", ":8901", "The github user or organization name.")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, usage)
@@ -48,97 +73,79 @@ func init() {
 	}
 }
 
-// A Client manages communication with the Github API.
+// A Client extends operations on the Github API.
 type Client struct {
-	// githubClient is an authenticated client for accessing the github API.
-	GithubClient *github.Client
-	// owner is the github project (e.g. github.com/<owner>/<repo>).
-	owner string
-	// repo is the github repository under the above owner.
-	repo string
+	*github.Client
 }
 
 // NewClient creates an Client authenticated using the Github authToken.
 // Future operations are only performed on the given github "owner/repo".
-func NewClient(owner, repo, authToken string) *Client {
+func NewClient(authToken string) *Client {
 	ctx := context.Background()
 	tokenSource := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: authToken},
 	)
 	client := &Client{
-		GithubClient: github.NewClient(oauth2.NewClient(ctx, tokenSource)),
-		owner:        owner,
-		repo:         repo,
+		github.NewClient(oauth2.NewClient(ctx, tokenSource)),
 	}
 	return client
 }
 
-type localClient Client
+func (c *Client) editIssue(ctx context.Context, event *github.IssuesEvent, labels []string) (*github.Issue, *github.Response, error) {
+	issue := event.GetIssue()
+	return c.Issues.Edit(
+		ctx,
+		event.GetRepo().GetOwner().GetLogin(),
+		event.GetRepo().GetName(),
+		issue.GetNumber(),
+		&github.IssueRequest{
+			Labels: &labels,
+		},
+	)
+}
 
-func (l *localClient) addLabel(event *github.IssuesEvent, label string) error {
+func filterLabels(labels []github.Label, remove string) []string {
+	currentLabels := []string{}
+	for _, currentLabel := range labels {
+		if currentLabel.GetName() == remove {
+			// Skip this label since we want it removed.
+			continue
+		}
+		currentLabels = append(currentLabels, currentLabel.GetName())
+	}
+	return currentLabels
+}
+
+func (c *Client) addLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
 	ctx := context.Background()
 	currentLabels := &[]string{}
 	issue := event.GetIssue()
 	for _, currentLabel := range issue.Labels {
-		log.Println(currentLabel)
 		if currentLabel.GetName() == label {
 			// No need to continue, since the label is already present.
-			return nil
+			return nil, nil, nil
 		}
 		*currentLabels = append(*currentLabels, currentLabel.GetName())
 	}
 	// Append the new label to the current labels.
 	*currentLabels = append(*currentLabels, label)
-	newIssue, resp, err := l.GithubClient.Issues.Edit(
-		ctx,
-		event.GetRepo().GetOwner().GetLogin(),
-		event.GetRepo().GetName(),
-		issue.GetNumber(),
-		&github.IssueRequest{
-			Labels: currentLabels,
-		},
-	)
-	if err != nil {
-		log.Println("Error: ", resp)
-		return err
-	}
-	log.Printf("Success: %#v", newIssue.Labels)
-	return nil
-}
-func (l *localClient) rmLabel(event *github.IssuesEvent, label string) error {
-	ctx := context.Background()
-	currentLabels := &[]string{}
-	issue := event.GetIssue()
-	for _, currentLabel := range issue.Labels {
-		log.Println(currentLabel)
-		if currentLabel.GetName() == label {
-			// Skip this label since we want it removed.
-			continue
-		}
-		*currentLabels = append(*currentLabels, currentLabel.GetName())
-	}
-	newIssue, resp, err := l.GithubClient.Issues.Edit(
-		ctx,
-		event.GetRepo().GetOwner().GetLogin(),
-		event.GetRepo().GetName(),
-		issue.GetNumber(),
-		&github.IssueRequest{
-			Labels: currentLabels,
-		},
-	)
-	if err != nil {
-		log.Println("Error: ", resp)
-		return err
-	}
-	log.Printf("Success: %#v", newIssue.Labels)
-	return nil
+	return c.editIssue(ctx, event, *currentLabels)
 }
 
-func setupRoutes(l *localClient) {
+func (c *Client) rmLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
+	ctx := context.Background()
+	issue := event.GetIssue()
+	currentLabels := filterLabels(issue.Labels, label)
+	return c.editIssue(ctx, event, currentLabels)
+}
+
+func setupRoutes(c *Client) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))
+		fmt.Fprintf(w, "%s", usage)
+		flag.CommandLine.SetOutput(w)
+		flag.PrintDefaults()
 	})
-	http.HandleFunc("/event_handler", l.eventHandler)
+	http.HandleFunc("/event_handler", c.eventHandler)
 }
 
 func supportedEvent(events []string, supported string) bool {
@@ -150,31 +157,17 @@ func supportedEvent(events []string, supported string) bool {
 	return false
 }
 
-func getZenMessage(url string) string {
-	resp, err := http.Get(url)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-func (l *localClient) eventHandler(w http.ResponseWriter, r *http.Request) {
+func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Unsupported event type", http.StatusMethodNotAllowed)
 		return
 	}
 	// Key must match the key used when registering the webhook at github.com
-	payload, err := github.ValidatePayload(r, []byte("test"))
+	payload, err := github.ValidatePayload(r, []byte(webhookSecret))
 	if err != nil {
 		http.Error(w, "payload did not validate", http.StatusInternalServerError)
 		return
 	}
-	// fmt.Println(string(payload))
 	event, err := github.ParseWebHook(github.WebHookType(r), payload)
 	if err != nil {
 		http.Error(w, "failed to parse webhook", http.StatusInternalServerError)
@@ -195,59 +188,29 @@ func (l *localClient) eventHandler(w http.ResponseWriter, r *http.Request) {
 		pretty.Print(event)
 		return
 
-	case *github.IssueCommentEvent:
-		// TODO: scan issue comments for commands.
-		pretty.Print(event)
-
 	case *github.IssuesEvent:
-		// TODO: detect close events.
 		var err error
+		var resp *github.Response
+		var issue *github.Issue
+
 		switch {
 		case event.GetAction() == "opened" || event.GetAction() == "reopened":
-			log.Println("issue opened:", event.GetIssue().GetHTMLURL())
-			err = l.addLabel(event, "review/triage")
+			log.Println("Issue open: ", event.GetIssue().GetHTMLURL())
+			issue, resp, err = c.addLabel(event, "review/triage")
 		case event.GetAction() == "closed":
-			log.Println("issue closed:", event.GetIssue().GetHTMLURL())
-			err = l.rmLabel(event, "review/triage")
+			log.Println("Issue close:", event.GetIssue().GetHTMLURL())
+			issue, resp, err = c.rmLabel(event, "review/triage")
 		}
+		//if resp != nil {
+		//log.Println("Response:    ", resp)
+		//}
 		if err != nil {
-			log.Println(err)
+			log.Println("Error:       ", resp, err)
+		}
+		if issue != nil {
+			log.Println("Success:     ", resp, filterLabels(issue.Labels, ""))
 		}
 
-	case *github.PullRequestEvent:
-		data := url.Values{}
-		msg := ""
-		switch event.GetAction() {
-		case "review_requested":
-			msg = fmt.Sprintf("%s added %s as a reviewer on: %s",
-				event.PullRequest.User.GetLogin(),
-				event.RequestedReviewer.GetLogin(),
-				event.PullRequest.GetHTMLURL())
-		case "review_request_removed":
-			msg = fmt.Sprintf("%s removed %s as a reviewer on: %s",
-				event.PullRequest.User.GetLogin(),
-				event.RequestedReviewer.GetLogin(),
-				event.PullRequest.GetHTMLURL())
-		default:
-			fmt.Printf("Ignoring action: %q\n", event.GetAction())
-			pretty.Println(event.Action)
-			pretty.Println(event.Sender.Login)
-			return
-		}
-		fmt.Println(msg)
-
-		data.Set("payload", `{"text": "`+msg+`"}`)
-		if slackURL != "" {
-			resp, err := http.PostForm(slackURL, data)
-			if err != nil {
-				http.Error(w, "Bad post to slack", http.StatusInternalServerError)
-				fmt.Println("Failed post to slack", err)
-				return
-			}
-			fmt.Println()
-			fmt.Println(resp.Status, resp.StatusCode)
-		}
-		fmt.Println(data)
 	default:
 		fmt.Println("Unsupported event type")
 		http.Error(w, "Unsupported event type", http.StatusNotImplemented)
@@ -257,14 +220,14 @@ func (l *localClient) eventHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if authToken == "" || fGithubOwner == "" || fGithubRepo == "" {
+	if authToken == "" || webhookSecret == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
-	client := (*localClient)(NewClient(fGithubOwner, fGithubRepo, authToken))
 
-	addr := ":8901"
+	client := NewClient(authToken)
 	setupRoutes(client)
-	fmt.Println("Listening on ", addr)
-	http.ListenAndServe(addr, nil)
+
+	fmt.Println("Listening on ", fListenAddr)
+	log.Fatal(http.ListenAndServe(fListenAddr, nil))
 }
