@@ -15,12 +15,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var (
-	authToken     string
-	webhookSecret string
-	fListenAddr   string
-)
-
 const (
 	usage = `
 USAGE:
@@ -62,6 +56,12 @@ FLAGS:
 `
 )
 
+var (
+	authToken     string
+	webhookSecret string
+	fListenAddr   string
+)
+
 func init() {
 	authToken = os.Getenv("GITHUB_AUTH_TOKEN")
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
@@ -91,7 +91,8 @@ func NewClient(authToken string) *Client {
 	return client
 }
 
-func (c *Client) updateIssueLabels(ctx context.Context, event *github.IssuesEvent, labels []string) (*github.Issue, *github.Response, error) {
+func (c *Client) updateIssueLabels(
+	ctx context.Context, event *github.IssuesEvent, labels []string) (*github.Issue, *github.Response, error) {
 	issue := event.GetIssue()
 	return c.Issues.Edit(
 		ctx,
@@ -104,7 +105,7 @@ func (c *Client) updateIssueLabels(ctx context.Context, event *github.IssuesEven
 	)
 }
 
-func (c *Client) addLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
+func (c *Client) addIssueLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
 	ctx := context.Background()
 	currentLabels := &[]string{}
 	issue := event.GetIssue()
@@ -120,7 +121,7 @@ func (c *Client) addLabel(event *github.IssuesEvent, label string) (*github.Issu
 	return c.updateIssueLabels(ctx, event, *currentLabels)
 }
 
-func (c *Client) removeLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
+func (c *Client) removeIssueLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
 	ctx := context.Background()
 	issue := event.GetIssue()
 	return c.updateIssueLabels(ctx, event, filterLabels(issue.Labels, label))
@@ -164,10 +165,10 @@ func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case event.GetAction() == "opened" || event.GetAction() == "reopened":
 			log.Println("Issue open: ", event.GetIssue().GetHTMLURL())
-			issue, resp, err = c.addLabel(event, "review/triage")
+			issue, resp, err = c.addIssueLabel(event, "review/triage")
 		case event.GetAction() == "closed":
 			log.Println("Issue close:", event.GetIssue().GetHTMLURL())
-			issue, resp, err = c.removeLabel(event, "review/triage")
+			issue, resp, err = c.removeIssueLabel(event, "review/triage")
 		default:
 			log.Println("Ignoring unsupported issue action:", event.GetAction())
 		}
