@@ -91,7 +91,7 @@ func NewClient(authToken string) *Client {
 	return client
 }
 
-func (c *Client) editIssue(ctx context.Context, event *github.IssuesEvent, labels []string) (*github.Issue, *github.Response, error) {
+func (c *Client) updateIssueLabels(ctx context.Context, event *github.IssuesEvent, labels []string) (*github.Issue, *github.Response, error) {
 	issue := event.GetIssue()
 	return c.Issues.Edit(
 		ctx,
@@ -102,18 +102,6 @@ func (c *Client) editIssue(ctx context.Context, event *github.IssuesEvent, label
 			Labels: &labels,
 		},
 	)
-}
-
-func filterLabels(labels []github.Label, remove string) []string {
-	currentLabels := []string{}
-	for _, currentLabel := range labels {
-		if currentLabel.GetName() == remove {
-			// Skip this label since we want it removed.
-			continue
-		}
-		currentLabels = append(currentLabels, currentLabel.GetName())
-	}
-	return currentLabels
 }
 
 func (c *Client) addLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
@@ -129,45 +117,28 @@ func (c *Client) addLabel(event *github.IssuesEvent, label string) (*github.Issu
 	}
 	// Append the new label to the current labels.
 	*currentLabels = append(*currentLabels, label)
-	return c.editIssue(ctx, event, *currentLabels)
+	return c.updateIssueLabels(ctx, event, *currentLabels)
 }
 
-func (c *Client) rmLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
+func (c *Client) removeLabel(event *github.IssuesEvent, label string) (*github.Issue, *github.Response, error) {
 	ctx := context.Background()
 	issue := event.GetIssue()
-	currentLabels := filterLabels(issue.Labels, label)
-	return c.editIssue(ctx, event, currentLabels)
-}
-
-func setupRoutes(c *Client) {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s", usage)
-		flag.CommandLine.SetOutput(w)
-		flag.PrintDefaults()
-	})
-	http.HandleFunc("/event_handler", c.eventHandler)
-}
-
-func supportedEvent(events []string, supported string) bool {
-	for _, event := range events {
-		if event == supported {
-			return true
-		}
-	}
-	return false
+	return c.updateIssueLabels(ctx, event, filterLabels(issue.Labels, label))
 }
 
 func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
+	// Restrict event handling to POST requests.
 	if r.Method != http.MethodPost {
 		http.Error(w, "Unsupported event type", http.StatusMethodNotAllowed)
 		return
 	}
-	// Key must match the key used when registering the webhook at github.com
+	// webhookSecret should match the secret used when registering the webhook.
 	payload, err := github.ValidatePayload(r, []byte(webhookSecret))
 	if err != nil {
 		http.Error(w, "payload did not validate", http.StatusInternalServerError)
 		return
 	}
+	// Convert the payload into a specific github event type.
 	event, err := github.ParseWebHook(github.WebHookType(r), payload)
 	if err != nil {
 		http.Error(w, "failed to parse webhook", http.StatusInternalServerError)
@@ -178,14 +149,11 @@ func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
 	case *github.PingEvent:
 		// Ping events occur during first registration.
 		// If we return without error, the webhook is registered successfully.
-		if !supportedEvent(event.Hook.Events, "issue_comment") &&
-			!supportedEvent(event.Hook.Events, "issues") &&
-			!supportedEvent(event.Hook.Events, "pull_request") {
-			fmt.Println("Unsupported event types", event.Hook.Events)
-			http.Error(w, "Unsupported event type", http.StatusNotImplemented)
+		if !eventIsSupported(event.Hook.Events, "issues") {
+			pretty.Print(r.Header)
+			log.Println("Unsupported event type:", event.Hook.Events)
+			http.Error(w, "Unsupported event type:", http.StatusNotImplemented)
 		}
-		pretty.Print(r.Header)
-		pretty.Print(event)
 		return
 
 	case *github.IssuesEvent:
@@ -199,11 +167,10 @@ func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
 			issue, resp, err = c.addLabel(event, "review/triage")
 		case event.GetAction() == "closed":
 			log.Println("Issue close:", event.GetIssue().GetHTMLURL())
-			issue, resp, err = c.rmLabel(event, "review/triage")
+			issue, resp, err = c.removeLabel(event, "review/triage")
+		default:
+			log.Println("Ignoring unsupported issue action:", event.GetAction())
 		}
-		//if resp != nil {
-		//log.Println("Response:    ", resp)
-		//}
 		if err != nil {
 			log.Println("Error:       ", resp, err)
 		}
@@ -216,6 +183,36 @@ func (c *Client) eventHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unsupported event type", http.StatusNotImplemented)
 	}
 	return
+}
+
+func filterLabels(labels []github.Label, remove string) []string {
+	currentLabels := []string{}
+	for _, currentLabel := range labels {
+		if currentLabel.GetName() == remove {
+			// Skip this label since we want it removed.
+			continue
+		}
+		currentLabels = append(currentLabels, currentLabel.GetName())
+	}
+	return currentLabels
+}
+
+func eventIsSupported(events []string, supported string) bool {
+	for _, event := range events {
+		if event == supported {
+			return true
+		}
+	}
+	return false
+}
+
+func setupRoutes(c *Client) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s", usage)
+		flag.CommandLine.SetOutput(w)
+		flag.PrintDefaults()
+	})
+	http.HandleFunc("/event_handler", c.eventHandler)
 }
 
 func main() {
