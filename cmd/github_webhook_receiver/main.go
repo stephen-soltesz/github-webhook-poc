@@ -69,6 +69,8 @@ func init() {
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
 	flag.StringVar(&fListenAddr, "addr", ":8901", "The github user or organization name.")
 
+	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, usage)
 		flag.PrintDefaults()
