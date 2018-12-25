@@ -64,6 +64,7 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 	// Convert the payload into a specific github event type.
 	event, err := github.ParseWebHook(github.WebHookType(r), payload)
 	if err != nil {
+		log.Println(string(payload))
 		httpError(w, "Failed to parse webhook", http.StatusInternalServerError)
 		return
 	}
@@ -90,6 +91,8 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		err = h.PushEvent(event)
 	case *github.IssuesEvent:
 		err = h.IssuesEvent(event)
+	case *github.InstallationRepositoriesEvent:
+		pretty.Print(event)
 	default:
 		err = fmt.Errorf("Unsupported event type: %s", pretty.Sprint(event))
 	}
