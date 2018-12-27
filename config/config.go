@@ -10,13 +10,13 @@ import (
 	"github.com/stephen-soltesz/pretty"
 )
 
-// Repos encodes the list of allowed github repo HTML URLs. All others will be
+// Ignore encodes the list of allowed github repo HTML URLs. All others will be
 // ignored.
-type Repos map[string]string
+type Ignore map[string]string
 
-// Load downloads a Repos config from the given URL.
-func Load(configURL string) Repos {
-	r := Repos{}
+// Load downloads a Ignore config from the given URL.
+func Load(configURL string) Ignore {
+	r := Ignore{}
 	log.Println("loading:", configURL)
 	resp, err := http.Get(configURL)
 	if err != nil {
