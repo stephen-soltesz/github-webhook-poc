@@ -59,6 +59,11 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		httpError(w, "Payload did not validate", http.StatusInternalServerError)
 		return
 	}
+	if github.WebHookType(r) == "integration_installation" ||
+		github.WebHookType(r) == "integration_installation_repositories" {
+		log.Println("ignoring legacy event name:", github.WebHookType(r))
+		return
+	}
 	log.Println("--")
 	log.Println("Handling request for:", github.WebHookType(r))
 	// Convert the payload into a specific github event type.
@@ -74,9 +79,12 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		if len(h.supportedEvents) == 0 {
 			h.initSupportedEvents()
 		}
+		log.Println("Zen:", event.GetZen())
 		if !pingEventsSupported(event, h.supportedEvents) {
 			msg := fmt.Sprintln("Unsupported event type:", event.Hook.Events, r.Header)
 			httpError(w, msg, http.StatusNotImplemented)
+		} else {
+			log.Printf("Successful ping for events: %v", h.supportedEvents)
 		}
 		return
 	}
@@ -91,6 +99,8 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		err = h.PushEvent(event)
 	case *github.IssuesEvent:
 		err = h.IssuesEvent(event)
+	case *github.InstallationEvent:
+		pretty.Print(event)
 	case *github.InstallationRepositoriesEvent:
 		pretty.Print(event)
 	default:
