@@ -54,9 +54,20 @@ func (c *Client) PushEvent(event *github.PushEvent) error {
 	return nil
 }
 
+type getInstallationer interface {
+	GetInstallation() *github.Installation
+}
+
+func getID(event getInstallationer) int64 {
+	if event.GetInstallation() != nil {
+		return event.GetInstallation().GetID()
+	}
+	return 0
+}
+
 // IssuesEvent .
 func (c *Client) IssuesEvent(event *github.IssuesEvent) error {
-	client := githubx.NewClient(event.GetInstallation().GetID())
+	client := githubx.NewClient(getID(event))
 	ev := issues.NewEvent(client, event)
 	source := ev.GetRepo().GetHTMLURL()
 	if _, ok := c.Ignore[source]; ok {
