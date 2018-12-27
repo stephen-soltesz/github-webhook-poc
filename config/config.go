@@ -17,7 +17,7 @@ type Ignore map[string]string
 // Load downloads a Ignore config from the given URL.
 func Load(configURL string) Ignore {
 	r := Ignore{}
-	log.Println("loading:", configURL)
+	log.Println("Loading:", configURL)
 	resp, err := http.Get(configURL)
 	if err != nil {
 		log.Println(err)
