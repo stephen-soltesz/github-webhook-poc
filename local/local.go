@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stephen-soltesz/github-webhook-poc/githubx"
+
 	"github.com/google/go-github/github"
 	"github.com/stephen-soltesz/github-webhook-poc/config"
 	"github.com/stephen-soltesz/github-webhook-poc/events/issues"
@@ -17,11 +19,13 @@ var (
 	DefaultConfigURL = "https://raw.githubusercontent.com/stephen-soltesz/public-issue-test/master/config.json"
 )
 
+// Client collects local data needed for these operations.
 type Client struct {
-	*github.Client
-	config.Repos
+	config.Ignore
 }
 
+// PushEvent checks push commits for references to the ConfigFilename. If a
+// modification is found, the ignore list is reloaded.
 func (c *Client) PushEvent(event *github.PushEvent) error {
 	refs := strings.Split(event.GetRef(), "/")
 	log.Println(refs)
@@ -42,18 +46,20 @@ func (c *Client) PushEvent(event *github.PushEvent) error {
 					event.GetRepo().GetFullName(),
 					branch,
 					ConfigFilename}, "/")
-			c.Repos = config.Load(configURL)
-			pretty.Print(c.Repos)
+			c.Ignore = config.Load(configURL)
+			pretty.Print(c.Ignore)
 			break
 		}
 	}
 	return nil
 }
 
+// IssuesEvent .
 func (c *Client) IssuesEvent(event *github.IssuesEvent) error {
-	ev := issues.NewEvent(c.Client, event)
+	client := githubx.NewClient(event.GetInstallation().GetID())
+	ev := issues.NewEvent(client, event)
 	source := ev.GetRepo().GetHTMLURL()
-	if _, ok := c.Repos[source]; !ok {
+	if _, ok := c.Ignore[source]; ok {
 		log.Println("Ignoring:", source)
 		return nil
 	}
