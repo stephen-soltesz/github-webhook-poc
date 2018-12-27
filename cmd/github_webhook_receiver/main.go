@@ -14,7 +14,6 @@ import (
 
 	// "github.com/kr/pretty"
 	"github.com/stephen-soltesz/github-webhook-poc/config"
-	"github.com/stephen-soltesz/github-webhook-poc/githubx"
 )
 
 const (
@@ -61,13 +60,16 @@ FLAGS:
 var (
 	authToken     string
 	webhookSecret string
+	privateKey    string
 	fListenAddr   string
 )
 
 func init() {
 	authToken = os.Getenv("GITHUB_AUTH_TOKEN")
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
-	flag.StringVar(&fListenAddr, "addr", ":8901", "The github user or organization name.")
+	privateKey = os.Getenv("GITHUB_PRIVATE_KEY")
+	// appID = os.Getenv("GITHUB_APP_ID")
+	flag.StringVar(&fListenAddr, "addr", ":3000", "The github user or organization name.")
 
 	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
 
@@ -85,14 +87,13 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if authToken == "" || webhookSecret == "" {
+	if (authToken == "" && privateKey == "") || webhookSecret == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	client := &local.Client{
-		Client: githubx.NewClient(authToken),
-		Repos:  config.Load(local.DefaultConfigURL),
+		Ignore: config.Load(local.DefaultConfigURL),
 	}
 
 	handle := &webhook.Handler{
@@ -100,8 +101,9 @@ func main() {
 		IssuesEvent:   client.IssuesEvent,
 		PushEvent:     client.PushEvent,
 	}
-	http.HandleFunc("/", usageHandler)
-	http.HandleFunc("/event_handler", handle.Request)
+	//	http.HandleFunc("/", usageHandler)
+	// http.HandleFunc("/event_handler", handle.Request)
+	http.HandleFunc("/", handle.Request)
 
 	fmt.Println("Listening on ", fListenAddr)
 	log.Fatal(http.ListenAndServe(fListenAddr, nil))
