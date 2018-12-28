@@ -18,9 +18,6 @@ type Ignore map[string]string
 func Load(configURL string) Ignore {
 	r := Ignore{}
 	log.Println("Loading:", configURL)
-	//req, err := http.NewRequest(http.MethodGet, configURL, nil)
-	//req.Header.Add("User-Agent", "Bananas")
-	//resp, err := http.DefaultClient.Do(req)
 	resp, err := http.Get(configURL)
 	if err != nil {
 		log.Println(err)
