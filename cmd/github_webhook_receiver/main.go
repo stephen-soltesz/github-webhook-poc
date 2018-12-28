@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/stephen-soltesz/github-webhook-poc/githubx/webhook"
 	"github.com/stephen-soltesz/github-webhook-poc/local"
-	"github.com/stephen-soltesz/github-webhook-poc/webhook"
 
 	// "github.com/kr/pretty"
 	"github.com/stephen-soltesz/github-webhook-poc/config"
+
+	"golang.org/x/crypto/acme/autocert"
 )
 
 const (
@@ -61,6 +63,7 @@ var (
 	authToken     string
 	webhookSecret string
 	privateKey    string
+	hostname      string
 	fListenAddr   string
 )
 
@@ -68,6 +71,7 @@ func init() {
 	authToken = os.Getenv("GITHUB_AUTH_TOKEN")
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
 	privateKey = os.Getenv("GITHUB_PRIVATE_KEY")
+	hostname = os.Getenv("WEBHOOK_HOSTNAME")
 	// appID = os.Getenv("GITHUB_APP_ID")
 	flag.StringVar(&fListenAddr, "addr", ":3000", "The github user or organization name.")
 
@@ -96,15 +100,19 @@ func main() {
 		Ignore: config.Load(local.DefaultConfigURL),
 	}
 
-	handle := &webhook.Handler{
+	eventHandler := &webhook.Handler{
 		WebhookSecret: webhookSecret,
 		IssuesEvent:   client.IssuesEvent,
 		PushEvent:     client.PushEvent,
 	}
-	//	http.HandleFunc("/", usageHandler)
-	// http.HandleFunc("/event_handler", handle.Request)
-	http.HandleFunc("/", handle.Request)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", usageHandler)
+	mux.Handle("/event_handler", eventHandler)
 
-	fmt.Println("Listening on ", fListenAddr)
-	log.Fatal(http.ListenAndServe(fListenAddr, nil))
+	if hostname != "" {
+		log.Fatal(http.Serve(autocert.NewListener(hostname), mux))
+	} else {
+		fmt.Println("Listening on ", fListenAddr)
+		log.Fatal(http.ListenAndServe(fListenAddr, mux))
+	}
 }
