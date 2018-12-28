@@ -5,9 +5,9 @@ metadata:
   namespace: default
 spec:
   ports:
-  - port: 3000
+  - port: 443
     protocol: TCP
-    targetPort: 3000
+    targetPort: 443
   selector:
     # Pods with labels matching this key/value pair will be publically
     # accessible through the service IP and port.
