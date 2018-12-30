@@ -30,9 +30,9 @@ type Handler struct {
 	// WebhookSecret should match the value used to register the github webhook.
 	WebhookSecret string
 
-	// All event handlers accept the corresponding event type. The handler may
-	// return an error. The `ServeHTTP` handler reports all errors as failures to
-	// the caller.
+	// All functions accept the corresponding event type. The functions may
+	// return an error. The `ServeHTTP` handler reports errors as HTTP 500
+	// failures to the caller.
 	CheckRunEvent                     func(*github.CheckRunEvent) error
 	CheckSuiteEvent                   func(*github.CheckSuiteEvent) error
 	CommitCommentEvent                func(*github.CommitCommentEvent) error
@@ -79,7 +79,7 @@ type Handler struct {
 // ServeHTTP is an http.Handler used to respond to webhook events with the
 // corresponding user-provided functions from the Handler.
 //
-// Only the GitHub "ping" event is handled automatically. For every event type
+// The GitHub "ping" event is handled automatically. For every event type
 // received in a "ping" event, ServeHTTP checks whether there is corresponding,
 // non-nil event handler functions. If so, then the ping is successful; if not,
 // the ping fails.
