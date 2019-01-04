@@ -1,0 +1,19 @@
+{
+	"zen": "Anything added dilutes everything else.",
+	"hook_id": 74819325,
+	"hook": {
+		"created_at": "2019-01-04T04:42:48Z",
+		"updated_at": "2019-01-04T04:42:48Z",
+		"url": "https://api.github.com/repos/stephen-soltesz/public-issue-test/hooks/74819325",
+		"id": 74819325,
+		"config": {
+			"content_type": "form",
+			"insecure_ssl": "0",
+			"url": "https://c16c2100.ngrok.io/event_handler"
+		},
+		"events": [
+			"push"
+		],
+		"active": true
+	}
+}
