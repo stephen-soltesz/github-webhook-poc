@@ -1,3 +1,4 @@
+// Package githubx extends operations in the google/go-github package.
 package githubx
 
 import (
@@ -13,8 +14,28 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// NewClient ...
+// NewClient creates a new, authenticated *github.Client. Depending on the value
+// of installationID, NewClient performs authentication using available
+// environment variables. If required environment variables are not found,
+// NewClient logs a warning and returns nil.
+//
+// If the installationID is zero, then NewClient authenticates using a personal
+// access token from the GITHUB_AUTH_TOKEN environment vairable. Personal access
+// tokens perform actions as the user associated with the token.
+//
+// If the installationID is not zero, then NewClient authenticates using a
+// Github App private key read from the absolute path contained in
+// GITHUB_PRIVATE_KEY and the Github App ID (About -> ID, *not* "OAuth Client
+// ID") contained in the GITHUB_APP_ID environment variables. Both values are
+// created during Github App registration. Github Apps perform actions as the
+// application not as a user, so permissions may have different restrictions.
+//
+// Multiple users may install a single Github App, so each installation receives
+// a unique "installation ID". All events related to a specific installation
+// include the installation ID.
 func NewClient(installationID int64) *github.Client {
+
+	// Personal access token authentication.
 	if installationID == 0 {
 		authToken, found := os.LookupEnv("GITHUB_AUTH_TOKEN")
 		if !found {
@@ -24,7 +45,7 @@ func NewClient(installationID int64) *github.Client {
 		return NewPersonalClient(authToken)
 	}
 
-	// GitHub Apps spe
+	// GitHub Apps authentication.
 	privateKey, found := os.LookupEnv("GITHUB_PRIVATE_KEY")
 	if !found {
 		log.Println("WARNING: GITHUB_PRIVATE_KEY is not set.")
@@ -43,8 +64,9 @@ func NewClient(installationID int64) *github.Client {
 	return NewAppClient(privateKey, appID, installationID)
 }
 
-// NewPersonalClient creates an Client authenticated using the Github authToken.
-// Future operations are only performed on the given github "owner/repo".
+// NewPersonalClient creates a *github.Client authenticated using the given
+// Github authToken. Future operations are performed as the user associated with
+// the token.
 func NewPersonalClient(authToken string) *github.Client {
 	ctx := context.Background()
 	tokenSource := oauth2.StaticTokenSource(
@@ -53,17 +75,18 @@ func NewPersonalClient(authToken string) *github.Client {
 	return github.NewClient(oauth2.NewClient(ctx, tokenSource))
 }
 
-// NewAppClient - x
+// NewAppClient creates a new *github.Client authenticated using the given
+// privateKey file name, appID, and installationID. Future operations are
+// performed as the Github App associated with these parameters.
 func NewAppClient(privateKey string, appID, installationID int64) *github.Client {
-	// Shared transport to reuse TCP connections.
-	tr := http.DefaultTransport
-
-	// Wrap the shared transport for use with the integration ID 1 authenticating with installation ID 99.
-	itr, err := ghinstallation.NewKeyFromFile(tr, (int)(appID), (int)(installationID), privateKey)
+	// Create a new "installation" (a.k.a. "Github Apps") transport that
+	// authenticates using the given private key for the given app and installation
+	// IDs.
+	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, (int)(appID), (int)(installationID), privateKey)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return nil
 	}
-
-	// Use installation transport with github.com/google/go-github
+	// Use the installation transport with a new *github.Client.
 	return github.NewClient(&http.Client{Transport: itr})
 }
