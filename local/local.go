@@ -2,63 +2,20 @@ package local
 
 import (
 	"log"
-	"strings"
 	"time"
 
 	"github.com/stephen-soltesz/github-webhook-poc/githubx"
 
 	"github.com/google/go-github/github"
-	"github.com/stephen-soltesz/github-webhook-poc/config"
 	"github.com/stephen-soltesz/github-webhook-poc/events/issues"
-	"github.com/stephen-soltesz/github-webhook-poc/slice"
-	"github.com/stephen-soltesz/pretty"
-)
-
-var (
-	ConfigFilename   = "config.json"
-	DefaultConfigURL = "https://raw.githubusercontent.com/stephen-soltesz/public-issue-test/master/config.json"
 )
 
 // Client collects local data needed for these operations.
-type Client struct {
-	config.Ignore
-}
-
-// PushEvent checks push commits for references to the ConfigFilename. If a
-// modification is found, the ignore list is reloaded.
-func (c *Client) PushEvent(event *github.PushEvent) error {
-	refs := strings.Split(event.GetRef(), "/")
-	log.Println(refs)
-	log.Println(refs[len(refs)-1])
-	branch := refs[len(refs)-1]
-
-	// TODO: parse full name.
-	log.Println(event.GetRepo().GetFullName())
-	for _, commit := range event.Commits {
-		log.Println(commit.GetID(), commit.Added, commit.Removed, commit.Modified)
-		if slice.ContainsString(commit.Added, ConfigFilename) ||
-			slice.ContainsString(commit.Removed, ConfigFilename) ||
-			slice.ContainsString(commit.Modified, ConfigFilename) {
-			// TODO: we should always use 'master' branch.
-			// Construct raw content url.
-			configURL := strings.Join(
-				[]string{"https://raw.githubusercontent.com",
-					event.GetRepo().GetFullName(),
-					branch,
-					ConfigFilename}, "/")
-			c.Ignore = config.Load(configURL)
-			pretty.Print(c.Ignore)
-			break
-		}
-	}
-	return nil
-}
-
 type getInstallationer interface {
 	GetInstallation() *github.Installation
 }
 
-func getID(event getInstallationer) int64 {
+func getSafeID(event getInstallationer) int64 {
 	if event.GetInstallation() != nil {
 		return event.GetInstallation().GetID()
 	}
@@ -66,14 +23,10 @@ func getID(event getInstallationer) int64 {
 }
 
 // IssuesEvent .
-func (c *Client) IssuesEvent(event *github.IssuesEvent) error {
-	client := githubx.NewClient(getID(event))
+func IssuesEvent(event *github.IssuesEvent) error {
+	client := githubx.NewClient(getSafeID(event))
 	ev := issues.NewEvent(client, event)
 	source := ev.GetRepo().GetHTMLURL()
-	if _, ok := c.Ignore[source]; ok {
-		log.Println("Ignoring:", source)
-		return nil
-	}
 
 	log.Println("Issues:", source)
 	// Lose the race for loading page load after "Submit new issue"
