@@ -13,7 +13,6 @@ import (
 	"github.com/stephen-soltesz/github-webhook-poc/local"
 
 	// "github.com/kr/pretty"
-	"github.com/stephen-soltesz/github-webhook-poc/config"
 
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -72,7 +71,6 @@ func init() {
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
 	privateKey = os.Getenv("GITHUB_PRIVATE_KEY")
 	hostname = os.Getenv("WEBHOOK_HOSTNAME")
-	// appID = os.Getenv("GITHUB_APP_ID")
 	flag.StringVar(&fListenAddr, "addr", ":3000", "The github user or organization name.")
 
 	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
@@ -96,14 +94,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := &local.Client{
-		Ignore: config.Load(local.DefaultConfigURL),
-	}
-
 	eventHandler := &webhook.Handler{
 		WebhookSecret: webhookSecret,
-		IssuesEvent:   client.IssuesEvent,
-		PushEvent:     client.PushEvent,
+		IssuesEvent:   local.IssuesEvent,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", usageHandler)
