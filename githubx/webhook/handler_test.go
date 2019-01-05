@@ -175,6 +175,19 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			method:  http.MethodPost,
 			status:  http.StatusOK,
 		},
+		{
+			name: "issues",
+			fields: fields{
+				WebhookSecret: "test",
+				IssuesEvent: func(event *github.IssuesEvent) error {
+					return nil
+				},
+			},
+			event:   "issues",
+			payload: mustReadAll("testdata/issues.json"),
+			method:  http.MethodPost,
+			status:  http.StatusOK,
+		},
 	}
 	for _, tt := range tests {
 		var r *http.Request
