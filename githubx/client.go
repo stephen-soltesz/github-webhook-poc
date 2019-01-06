@@ -82,7 +82,8 @@ func NewAppClient(privateKey string, appID, installationID int64) *github.Client
 	// Create a new "installation" (a.k.a. "Github Apps") transport that
 	// authenticates using the given private key for the given app and installation
 	// IDs.
-	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, (int)(appID), (int)(installationID), privateKey)
+	itr, err := ghinstallation.NewKeyFromFile(
+		http.DefaultTransport, (int)(appID), (int)(installationID), privateKey)
 	if err != nil {
 		log.Println(err)
 		return nil
