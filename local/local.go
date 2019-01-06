@@ -1,6 +1,8 @@
 package local
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,6 +11,17 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/stephen-soltesz/github-webhook-poc/events/issues"
 )
+
+var (
+	// ErrNewClient is returned when a new Github client fails.
+	ErrNewClient = fmt.Errorf("Failed to allocate new Github client")
+)
+
+// Config contains
+type Config struct {
+	// Delay is
+	Delay time.Duration
+}
 
 // Client collects local data needed for these operations.
 type getInstallationer interface {
@@ -23,38 +36,41 @@ func getSafeID(event getInstallationer) int64 {
 }
 
 // IssuesEvent .
-func IssuesEvent(event *github.IssuesEvent) error {
+func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
 	client := githubx.NewClient(getSafeID(event))
+	if client == nil {
+		return ErrNewClient
+	}
 	ev := issues.NewEvent(client, event)
-	source := ev.GetRepo().GetHTMLURL()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
-	log.Println("Issues:", source)
 	// Lose the race for loading page load after "Submit new issue"
 	// so that the new label is visible to user.
-	time.Sleep(time.Second)
+	time.Sleep(c.Delay)
+
 	var err error
 	var resp *github.Response
 	var issue *github.Issue
 
+	log.Println("IssuesEvent:", ev.GetAction(), ev.GetIssue().GetHTMLURL())
 	switch {
-	case event.GetAction() == "opened" || event.GetAction() == "reopened":
-		log.Println("Issues: open: ", event.GetIssue().GetHTMLURL())
-		issue, resp, err = ev.AddIssueLabel("review/triage")
-	case event.GetAction() == "closed":
-		log.Println("Issues: close:", event.GetIssue().GetHTMLURL())
-		issue, resp, err = ev.RemoveIssueLabel("review/triage")
+	case ev.GetAction() == "opened" || ev.GetAction() == "reopened":
+		issue, resp, err = ev.AddIssueLabel(ctx, "review/triage")
+	case ev.GetAction() == "closed":
+		issue, resp, err = ev.RemoveIssueLabel(ctx, "review/triage")
 	default:
-		log.Println("Issues: ignoring unsupported action:", event.GetAction())
+		log.Println("IssuesEvent: ignoring unsupported action:", ev.GetAction())
 	}
 	if err != nil {
-		log.Println("Issues: error:       ", resp, err)
+		log.Println("IssuesEvent: error:       ", resp, err)
 	}
 	if issue != nil {
 		labels := ""
 		for _, currentLabel := range issue.Labels {
 			labels += currentLabel.GetName() + " "
 		}
-		log.Println("Issues: okay: ", resp, labels)
+		log.Println("IssuesEvent: okay: ", resp, labels)
 	}
 	return nil
 }
