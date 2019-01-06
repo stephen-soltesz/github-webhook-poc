@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/stephen-soltesz/github-webhook-poc/events/issues/iface"
 	"github.com/stephen-soltesz/pretty"
 
 	"github.com/google/go-github/github"
@@ -11,42 +12,45 @@ import (
 
 // Event encapsulates operations on a *github.IssuesEvent.
 type Event struct {
-	*github.Client
+	//	*github.Client
 	*github.IssuesEvent
+	iface.Issues
 }
 
 // NewEvent creates a new Event based on the given client and event.
 func NewEvent(client *github.Client, event *github.IssuesEvent) *Event {
 	return &Event{
-		client,
-		event,
+		IssuesEvent: event,
+		Issues:      iface.NewIssues(client.Issues),
 	}
 }
 
 // EditIssue updates the event issue using the given request.
 func (ev *Event) EditIssue(
-	ctx context.Context, req *github.IssueRequest) (
-	*github.Issue, *github.Response, error) {
-	issue := ev.GetIssue()
+	ctx context.Context,
+	req *github.IssueRequest) (*github.Issue, *github.Response, error) {
+
 	log.Println("Issues.Edit:",
 		ev.GetRepo().GetOwner().GetLogin(),
 		ev.GetRepo().GetName(),
-		issue.GetNumber(),
+		ev.GetIssue().GetNumber(),
 		pretty.SprintPlain(req))
+
 	return ev.Issues.Edit(
 		ctx,
 		ev.GetRepo().GetOwner().GetLogin(),
 		ev.GetRepo().GetName(),
-		issue.GetNumber(),
+		ev.GetIssue().GetNumber(),
 		req)
 }
 
 // AddIssueLabel adds a label to the event issue.
-func (ev *Event) AddIssueLabel(label string) (*github.Issue, *github.Response, error) {
-	ctx := context.Background()
+func (ev *Event) AddIssueLabel(
+	ctx context.Context, label string) (*github.Issue, *github.Response, error) {
+
+	// Check curent labels for the new label and collect the list.
 	currentLabels := []string{}
-	issue := ev.GetIssue()
-	for _, currentLabel := range issue.Labels {
+	for _, currentLabel := range ev.GetIssue().Labels {
 		if currentLabel.GetName() == label {
 			// No need to continue, since the label is already present.
 			return nil, nil, nil
@@ -63,13 +67,13 @@ func (ev *Event) AddIssueLabel(label string) (*github.Issue, *github.Response, e
 	)
 }
 
-// RemoveIssueLabel removes the given label from the event issue. If the label is not
-// found, no action is taken.
-func (ev *Event) RemoveIssueLabel(label string) (*github.Issue, *github.Response, error) {
-	ctx := context.Background()
-	issue := ev.GetIssue()
-	labels := filterLabels(issue.Labels, label)
-	if len(labels) != len(issue.Labels) {
+// RemoveIssueLabel removes the given label from the event issue. If the label
+// is not found, no action is taken.
+func (ev *Event) RemoveIssueLabel(
+	ctx context.Context, label string) (*github.Issue, *github.Response, error) {
+
+	labels := filterLabels(ev.GetIssue().Labels, label)
+	if len(labels) != len(ev.GetIssue().Labels) {
 		return ev.EditIssue(
 			ctx,
 			&github.IssueRequest{
