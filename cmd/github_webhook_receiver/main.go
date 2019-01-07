@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/stephen-soltesz/github-webhook-poc/githubx/webhook"
 	"github.com/stephen-soltesz/github-webhook-poc/local"
@@ -94,9 +95,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	client := local.Config{
+		Delay: time.Second,
+	}
+
 	eventHandler := &webhook.Handler{
 		WebhookSecret: webhookSecret,
-		IssuesEvent:   local.IssuesEvent,
+		IssuesEvent:   client.IssuesEvent,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", usageHandler)
