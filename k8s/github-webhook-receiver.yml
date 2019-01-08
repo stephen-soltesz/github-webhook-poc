@@ -23,7 +23,7 @@ spec:
         - name: GITHUB_WEBHOOK_SECRET
           value: test 
         - name: GITHUB_APP_ID
-          value: "22751"
+          value: "23222"
         - name: DEBUG_LOGGING
           value: "1"
         - name: GITHUB_PRIVATE_KEY
