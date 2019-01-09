@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/stephen-soltesz/pretty"
+
 	"github.com/stephen-soltesz/github-webhook-poc/githubx"
 
 	"github.com/google/go-github/github"
@@ -72,5 +74,19 @@ func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
 		}
 		log.Println("IssuesEvent: okay: ", resp, labels)
 	}
+	return nil
+}
+
+// InstallationEvent handles events when an application is installed for the
+// first time.
+func InstallationEvent(event *github.InstallationEvent) error {
+	pretty.Print(event)
+	return nil
+}
+
+// InstallationRepositoriesEvent handles events when repositories are added or
+// removed from a particular application installation.
+func InstallationRepositoriesEvent(event *github.InstallationRepositoriesEvent) error {
+	pretty.Print(event)
 	return nil
 }

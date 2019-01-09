@@ -100,8 +100,10 @@ func main() {
 	}
 
 	eventHandler := &webhook.Handler{
-		WebhookSecret: webhookSecret,
-		IssuesEvent:   client.IssuesEvent,
+		WebhookSecret:                 webhookSecret,
+		IssuesEvent:                   client.IssuesEvent,
+		InstallationEvent:             local.InstallationEvent,
+		InstallationRepositoriesEvent: local.InstallationRepositoriesEvent,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", usageHandler)
