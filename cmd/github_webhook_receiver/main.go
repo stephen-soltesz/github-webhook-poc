@@ -22,16 +22,25 @@ const (
 	usage = `
 USAGE:
 
-  GitHub webhook receiver requires two environment variables at runtime:
+  GitHub webhook receiver is configured through environment variables.
 
-   * GITHUB_AUTH_TOKEN - to authenticate with the GitHub API
-   * GITHUB_WEBHOOK_SECRET - to validate the registered webhook
+  Set the webhook secret to match the secret used to register the receiver:
+  - GITHUB_WEBHOOK_SECRET
 
-ALLOCATE AUTH TOKEN:
+  For personal access token authentication:
+  - GITHUB_AUTH_TOKEN
+
+  For Github App authentication:
+  - GITHUB_PRIVATE_KEY - the path to filename containing private key.
+  - GITHUB_APP_ID - the application ID from registering the Github App.
+
+  For Let's Encrypt TLS certificate, you may provide a hostname:
+  - WEBHOOK_HOSTNAME
+
+PERSONAL ACCESS TOKENS:
 
   Allocate a "Personal Access Token" by visiting github.com:
-
-   * https://github.com/settings/tokens
+  - https://github.com/settings/tokens
 
 REGISTER WEBHOOK:
 
