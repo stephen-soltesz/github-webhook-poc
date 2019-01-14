@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/stephen-soltesz/github-webhook-poc/events/issues/iface"
+
 	"github.com/stephen-soltesz/pretty"
 
 	"github.com/stephen-soltesz/github-webhook-poc/githubx"
@@ -23,6 +25,14 @@ var (
 type Config struct {
 	// Delay is
 	Delay time.Duration
+
+	getIface func(client *github.Client) iface.Issues
+}
+
+// NewConfig creates a new config instantce.
+func NewConfig(delay time.Duration) *Config {
+	// Initialize the new config instance with a default getIface function.
+	return &Config{Delay: delay, getIface: getIface}
 }
 
 // Client collects local data needed for these operations.
@@ -37,13 +47,18 @@ func getSafeID(event getInstallationer) int64 {
 	return 0
 }
 
+func getIface(client *github.Client) iface.Issues {
+	return iface.NewIssues(client.Issues)
+}
+
 // IssuesEvent .
 func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
 	client := githubx.NewClient(getSafeID(event))
 	if client == nil {
 		return ErrNewClient
 	}
-	ev := issues.NewEvent(client, event)
+	ev := issues.NewEvent(c.getIface(client), event)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
