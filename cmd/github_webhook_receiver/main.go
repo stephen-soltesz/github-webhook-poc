@@ -104,11 +104,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := local.NewConfig(time.Second)
+	config := local.NewConfig(time.Second)
 
 	eventHandler := &webhook.Handler{
 		WebhookSecret:                 webhookSecret,
-		IssuesEvent:                   client.IssuesEvent,
+		IssuesEvent:                   config.IssuesEvent,
 		InstallationEvent:             local.InstallationEvent,
 		InstallationRepositoriesEvent: local.InstallationRepositoriesEvent,
 	}
