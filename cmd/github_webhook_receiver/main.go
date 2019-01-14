@@ -104,9 +104,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := local.Config{
-		Delay: time.Second,
-	}
+	client := local.NewConfig(time.Second)
 
 	eventHandler := &webhook.Handler{
 		WebhookSecret:                 webhookSecret,
