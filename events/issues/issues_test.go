@@ -27,7 +27,7 @@ func newLabel(label string) github.Label {
 }
 
 func TestNewEvent(t *testing.T) {
-	_ = NewEvent(&github.Client{}, &github.IssuesEvent{})
+	_ = NewEvent((&github.Client{}).Issues, &github.IssuesEvent{})
 }
 
 func TestEvent_AddIssueLabel(t *testing.T) {

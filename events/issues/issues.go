@@ -18,10 +18,11 @@ type Event struct {
 }
 
 // NewEvent creates a new Event based on the given client and event.
-func NewEvent(client *github.Client, event *github.IssuesEvent) *Event {
+// func NewEvent(client *github.Client, event *github.IssuesEvent) *Event {
+func NewEvent(issues iface.Issues, event *github.IssuesEvent) *Event {
 	return &Event{
 		IssuesEvent: event,
-		Issues:      iface.NewIssues(client.Issues),
+		Issues:      issues,
 	}
 }
 
