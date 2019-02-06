@@ -111,6 +111,9 @@ func main() {
 		IssuesEvent:                   config.IssuesEvent,
 		InstallationEvent:             local.InstallationEvent,
 		InstallationRepositoriesEvent: local.InstallationRepositoriesEvent,
+		ProjectCardEvent:              local.ProjectCardEvent,
+		ProjectColumnEvent:            local.ProjectColumnEvent,
+		ProjectEvent:                  local.ProjectEvent,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", usageHandler)
