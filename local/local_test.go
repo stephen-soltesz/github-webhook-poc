@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -134,4 +135,40 @@ func Test_getSafeID(t *testing.T) {
 
 func Test_getIface(t *testing.T) {
 	_ = getIface(&github.Client{})
+}
+
+func Test_genSprintLabels(t *testing.T) {
+	tests := []struct {
+		name string
+		now  time.Time
+		want []string
+	}{
+		{
+			name: "sprint 1 2019",
+			now:  time.Date(2019, 01, 1, 0, 0, 0, 0, time.UTC),
+			want: []string{"Sprint 1", "2019"},
+		},
+		{
+			name: "sprint 4 2019",
+			now:  time.Date(2019, 02, 17, 0, 0, 0, 0, time.UTC),
+			want: []string{"Sprint 4", "2019"},
+		},
+		{
+			name: "sprint 26 2019",
+			now:  time.Date(2019, 12, 29, 0, 0, 0, 0, time.UTC),
+			want: []string{"Sprint 26", "2019"},
+		},
+		{
+			name: "sprint 1 2020",
+			now:  time.Date(2019, 12, 31, 0, 0, 0, 0, time.UTC),
+			want: []string{"Sprint 1", "2020"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := genSprintLabels(tt.now); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("genSprintLabels() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
