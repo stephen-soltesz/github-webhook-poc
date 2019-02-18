@@ -30,13 +30,13 @@ func TestNewEvent(t *testing.T) {
 	_ = NewEvent((&github.Client{}).Issues, &github.IssuesEvent{})
 }
 
-func TestEvent_AddIssueLabel(t *testing.T) {
+func TestEvent_AddIssueLabels(t *testing.T) {
 	tests := []struct {
 		name        string
 		IssuesEvent *github.IssuesEvent
 		Issues      *fakeIssues
 		ctx         context.Context
-		label       string
+		labels      []string
 		wantErr     bool
 	}{
 		{
@@ -55,6 +55,7 @@ func TestEvent_AddIssueLabel(t *testing.T) {
 					},
 				},
 			},
+			labels: []string{"okay2"},
 		},
 		{
 			name: "okay-no-action",
@@ -65,7 +66,7 @@ func TestEvent_AddIssueLabel(t *testing.T) {
 					},
 				},
 			},
-			label: "okay",
+			labels: []string{"okay"},
 		},
 	}
 	for _, tt := range tests {
@@ -74,25 +75,25 @@ func TestEvent_AddIssueLabel(t *testing.T) {
 				IssuesEvent: tt.IssuesEvent,
 				Issues:      tt.Issues,
 			}
-			issue, _, err := ev.AddIssueLabel(tt.ctx, tt.label)
+			issue, _, err := ev.AddIssueLabels(tt.ctx, tt.labels)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Event.AddIssueLabel() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Event.AddIssueLabels() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.Issues != nil && !reflect.DeepEqual(issue, tt.Issues.Issue) {
-				t.Errorf("Event.AddIssueLabel() got = %v, want %v", issue, tt.Issues.Issue)
+				t.Errorf("Event.AddIssueLabels() got = %v, want %v", issue, tt.Issues.Issue)
 			}
 		})
 	}
 }
 
-func TestEvent_RemoveIssueLabel(t *testing.T) {
+func TestEvent_RemoveIssueLabels(t *testing.T) {
 	tests := []struct {
 		name        string
 		IssuesEvent *github.IssuesEvent
 		Issues      *fakeIssues
 		ctx         context.Context
-		label       string
+		labels      []string
 		wantErr     bool
 	}{
 		{
@@ -109,7 +110,7 @@ func TestEvent_RemoveIssueLabel(t *testing.T) {
 					Labels: []github.Label{},
 				},
 			},
-			label: "okay",
+			labels: []string{"okay"},
 		},
 		{
 			name: "okay-already-missing",
@@ -120,7 +121,7 @@ func TestEvent_RemoveIssueLabel(t *testing.T) {
 					},
 				},
 			},
-			label: "okay",
+			labels: []string{"okay"},
 		},
 	}
 	for _, tt := range tests {
@@ -129,7 +130,7 @@ func TestEvent_RemoveIssueLabel(t *testing.T) {
 				IssuesEvent: tt.IssuesEvent,
 				Issues:      tt.Issues,
 			}
-			issue, _, err := ev.RemoveIssueLabel(tt.ctx, tt.label)
+			issue, _, err := ev.RemoveIssueLabels(tt.ctx, tt.labels)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Event.RemoveIssueLabel() error = %v, wantErr %v", err, tt.wantErr)
 				return
