@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 
+	"github.com/stephen-soltesz/github-webhook-poc/slice"
+
 	"github.com/stephen-soltesz/github-webhook-poc/events/issues/iface"
 	"github.com/stephen-soltesz/pretty"
 
@@ -45,21 +47,50 @@ func (ev *Event) EditIssue(
 		req)
 }
 
+func (ev *Event) CloseIssue(ctx context.Context, labels []string) (*github.Issue, *github.Response, error) {
+	var req *github.IssueRequest
+	closed := "closed"
+	if labels == nil {
+		req = &github.IssueRequest{
+			State: &closed,
+		}
+	} else {
+		req = &github.IssueRequest{
+			State:  &closed,
+			Labels: &labels,
+		}
+	}
+	return ev.EditIssue(ctx, req)
+}
+
+func (ev *Event) SetIssueLabels(ctx context.Context, labels []string) (
+	*github.Issue, *github.Response, error) {
+	return ev.EditIssue(
+		ctx,
+		&github.IssueRequest{
+			Labels: &labels,
+		},
+	)
+}
+
 // AddIssueLabel adds a label to the event issue.
-func (ev *Event) AddIssueLabel(
-	ctx context.Context, label string) (*github.Issue, *github.Response, error) {
+func (ev *Event) AddIssueLabels(
+	ctx context.Context, labels []string) (*github.Issue, *github.Response, error) {
 
 	// Check curent labels for the new label and collect the list.
 	currentLabels := []string{}
-	for _, currentLabel := range ev.GetIssue().Labels {
-		if currentLabel.GetName() == label {
-			// No need to continue, since the label is already present.
-			return nil, nil, nil
-		}
-		currentLabels = append(currentLabels, currentLabel.GetName())
+	for _, current := range ev.GetIssue().Labels {
+		currentLabels = append(currentLabels, current.GetName())
 	}
 	// Append the new label to the current labels.
-	currentLabels = append(currentLabels, label)
+	for _, label := range labels {
+		if !slice.ContainsString(currentLabels, label) {
+			currentLabels = append(currentLabels, label)
+		}
+	}
+	if len(ev.GetIssue().Labels) == len(currentLabels) {
+		return nil, nil, nil
+	}
 	return ev.EditIssue(
 		ctx,
 		&github.IssueRequest{
@@ -70,25 +101,25 @@ func (ev *Event) AddIssueLabel(
 
 // RemoveIssueLabel removes the given label from the event issue. If the label
 // is not found, no action is taken.
-func (ev *Event) RemoveIssueLabel(
-	ctx context.Context, label string) (*github.Issue, *github.Response, error) {
+func (ev *Event) RemoveIssueLabels(
+	ctx context.Context, labels []string) (*github.Issue, *github.Response, error) {
 
-	labels := filterLabels(ev.GetIssue().Labels, label)
-	if len(labels) != len(ev.GetIssue().Labels) {
+	currentLabels := filterLabels(ev.GetIssue().Labels, labels)
+	if len(currentLabels) != len(ev.GetIssue().Labels) {
 		return ev.EditIssue(
 			ctx,
 			&github.IssueRequest{
-				Labels: &labels,
+				Labels: &currentLabels,
 			},
 		)
 	}
 	return nil, nil, nil
 }
 
-func filterLabels(labels []github.Label, remove string) []string {
+func filterLabels(labels []github.Label, remove []string) []string {
 	currentLabels := []string{}
 	for _, currentLabel := range labels {
-		if currentLabel.GetName() == remove {
+		if slice.ContainsString(remove, currentLabel.GetName()) {
 			// Skip this label since we want it removed.
 			continue
 		}
