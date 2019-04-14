@@ -119,6 +119,7 @@ func main() {
 	mux.HandleFunc("/", usageHandler)
 	mux.Handle("/event_handler", eventHandler)
 
+	log.Println("Starting listeners")
 	if hostname != "" {
 		log.Fatal(http.Serve(autocert.NewListener(hostname), mux))
 	} else {
