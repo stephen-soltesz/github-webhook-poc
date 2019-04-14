@@ -6,14 +6,55 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 
 	"github.com/google/go-github/github"
-	"github.com/stephen-soltesz/github-webhook-poc/slice"
 	"github.com/stephen-soltesz/pretty"
 )
 
 var (
 	enableDebugLogging string
+
+	// Copied from go-github/github/messages.go due to being a private variable.
+	eventTypeMapping = map[string]string{
+		"check_run":                      "CheckRunEvent",
+		"check_suite":                    "CheckSuiteEvent",
+		"commit_comment":                 "CommitCommentEvent",
+		"create":                         "CreateEvent",
+		"delete":                         "DeleteEvent",
+		"deployment":                     "DeploymentEvent",
+		"deployment_status":              "DeploymentStatusEvent",
+		"fork":                           "ForkEvent",
+		"gollum":                         "GollumEvent",
+		"installation":                   "InstallationEvent",
+		"installation_repositories":      "InstallationRepositoriesEvent",
+		"issue_comment":                  "IssueCommentEvent",
+		"issues":                         "IssuesEvent",
+		"label":                          "LabelEvent",
+		"marketplace_purchase":           "MarketplacePurchaseEvent",
+		"member":                         "MemberEvent",
+		"membership":                     "MembershipEvent",
+		"milestone":                      "MilestoneEvent",
+		"organization":                   "OrganizationEvent",
+		"org_block":                      "OrgBlockEvent",
+		"page_build":                     "PageBuildEvent",
+		"ping":                           "PingEvent",
+		"project":                        "ProjectEvent",
+		"project_card":                   "ProjectCardEvent",
+		"project_column":                 "ProjectColumnEvent",
+		"public":                         "PublicEvent",
+		"pull_request_review":            "PullRequestReviewEvent",
+		"pull_request_review_comment":    "PullRequestReviewCommentEvent",
+		"pull_request":                   "PullRequestEvent",
+		"push":                           "PushEvent",
+		"repository":                     "RepositoryEvent",
+		"repository_vulnerability_alert": "RepositoryVulnerabilityAlertEvent",
+		"release":                        "ReleaseEvent",
+		"status":                         "StatusEvent",
+		"team":                           "TeamEvent",
+		"team_add":                       "TeamAddEvent",
+		"watch":                          "WatchEvent",
+	}
 )
 
 func init() {
@@ -115,15 +156,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check for the PingEvent type to handle differently than all other events.
 	if event, ok := event.(*github.PingEvent); ok {
-		if len(h.supportedEvents) == 0 {
-			h.initSupportedEvents()
-		}
+		//if len(h.supportedEvents) == 0 {
+		//h.initSupportedEvents()
+		//}
 		log.Println("Zen:", event.GetZen())
-		if !pingEventsSupported(event, h.supportedEvents) {
+		if !allEventsSupported(h, event) {
+			// if !pingEventsSupported(event, h.supportedEvents) {
 			msg := fmt.Sprintln("Unsupported event type:", event.Hook.Events, r.Header)
 			httpError(w, msg, http.StatusNotImplemented)
 		} else {
-			log.Printf("Successful ping for events: %v", h.supportedEvents)
+			log.Printf("Successful ping for all events: %v", event.Hook.Events)
 		}
 		return
 	}
@@ -132,91 +174,123 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Println(pretty.Sprint(event))
 	}
 
-	// Handle all other event types using the corresponding event function.
-	switch event := event.(type) {
-	case *github.CheckRunEvent:
-		err = h.CheckRunEvent(event)
-	case *github.CheckSuiteEvent:
-		err = h.CheckSuiteEvent(event)
-	case *github.CommitCommentEvent:
-		err = h.CommitCommentEvent(event)
-	case *github.CreateEvent:
-		err = h.CreateEvent(event)
-	case *github.DeleteEvent:
-		err = h.DeleteEvent(event)
-	case *github.DeploymentEvent:
-		err = h.DeploymentEvent(event)
-	case *github.DeploymentStatusEvent:
-		err = h.DeploymentStatusEvent(event)
-	case *github.ForkEvent:
-		err = h.ForkEvent(event)
-	case *github.GitHubAppAuthorizationEvent:
-		err = h.GitHubAppAuthorizationEvent(event)
-	case *github.GollumEvent:
-		err = h.GollumEvent(event)
-	case *github.InstallationEvent:
-		err = h.InstallationEvent(event)
-	case *github.InstallationRepositoriesEvent:
-		err = h.InstallationRepositoriesEvent(event)
-	case *github.IssueCommentEvent:
-		err = h.IssueCommentEvent(event)
-	case *github.IssuesEvent:
-		err = h.IssuesEvent(event)
-	case *github.LabelEvent:
-		err = h.LabelEvent(event)
-	case *github.MarketplacePurchaseEvent:
-		err = h.MarketplacePurchaseEvent(event)
-	case *github.MemberEvent:
-		err = h.MemberEvent(event)
-	case *github.MembershipEvent:
-		err = h.MembershipEvent(event)
-	case *github.MilestoneEvent:
-		err = h.MilestoneEvent(event)
-	case *github.OrganizationEvent:
-		err = h.OrganizationEvent(event)
-	case *github.OrgBlockEvent:
-		err = h.OrgBlockEvent(event)
-	case *github.PageBuildEvent:
-		err = h.PageBuildEvent(event)
-	case *github.ProjectEvent:
-		err = h.ProjectEvent(event)
-	case *github.ProjectCardEvent:
-		err = h.ProjectCardEvent(event)
-	case *github.ProjectColumnEvent:
-		err = h.ProjectColumnEvent(event)
-	case *github.PublicEvent:
-		err = h.PublicEvent(event)
-	case *github.PullRequestEvent:
-		err = h.PullRequestEvent(event)
-	case *github.PullRequestReviewEvent:
-		err = h.PullRequestReviewEvent(event)
-	case *github.PullRequestReviewCommentEvent:
-		err = h.PullRequestReviewCommentEvent(event)
-	case *github.PushEvent:
-		err = h.PushEvent(event)
-	case *github.ReleaseEvent:
-		err = h.ReleaseEvent(event)
-	case *github.RepositoryEvent:
-		err = h.RepositoryEvent(event)
-	case *github.RepositoryVulnerabilityAlertEvent:
-		err = h.RepositoryVulnerabilityAlertEvent(event)
-	case *github.StatusEvent:
-		err = h.StatusEvent(event)
-	case *github.TeamEvent:
-		err = h.TeamEvent(event)
-	case *github.TeamAddEvent:
-		err = h.TeamAddEvent(event)
-	case *github.WatchEvent:
-		err = h.WatchEvent(event)
-	default:
-		err = fmt.Errorf("Unsupported event type: %s", pretty.Sprint(event))
+	eventType := reflect.TypeOf(event).Elem().Name()
+	fmt.Println(eventType)
+	rHeader := reflect.Indirect(reflect.ValueOf(h))
+	fmt.Println(rHeader)
+	rHandlerFunc := rHeader.FieldByName(eventType)
+	fmt.Println(rHandlerFunc)
+
+	if reflect.DeepEqual(rHandlerFunc, reflect.Value{}) {
+		// We've received an event for an unsupported event type.
+		httpError(w, "Unsupported event: "+eventType, http.StatusNotImplemented)
+		return
 	}
+
+	if rHandlerFunc.IsNil() {
+		// We've received an event for a known event type, but somehow it is undefined.
+		// Normally, a "ping" event would discover this and the handler would fail to register.
+		// However, either the set of events could change across deployments.
+		httpError(w, "Unimplemented handler func for: "+eventType, http.StatusNotImplemented)
+		return
+	}
+
+	// Handle all other event types using the corresponding event function.
+	vals := []reflect.Value{reflect.ValueOf(event)}
+	ret := rHandlerFunc.Call(vals)
+	err = nil
+	if !ret[0].IsNil() {
+		err = ret[0].Interface().(error)
+	}
+
+	/*
+		// Handle all other event types using the corresponding event function.
+		switch event := event.(type) {
+		case *github.CheckRunEvent:
+			err = h.CheckRunEvent(event)
+		case *github.CheckSuiteEvent:
+			err = h.CheckSuiteEvent(event)
+		case *github.CommitCommentEvent:
+			err = h.CommitCommentEvent(event)
+		case *github.CreateEvent:
+			err = h.CreateEvent(event)
+		case *github.DeleteEvent:
+			err = h.DeleteEvent(event)
+		case *github.DeploymentEvent:
+			err = h.DeploymentEvent(event)
+		case *github.DeploymentStatusEvent:
+			err = h.DeploymentStatusEvent(event)
+		case *github.ForkEvent:
+			err = h.ForkEvent(event)
+		case *github.GitHubAppAuthorizationEvent:
+			err = h.GitHubAppAuthorizationEvent(event)
+		case *github.GollumEvent:
+			err = h.GollumEvent(event)
+		case *github.InstallationEvent:
+			err = h.InstallationEvent(event)
+		case *github.InstallationRepositoriesEvent:
+			err = h.InstallationRepositoriesEvent(event)
+		case *github.IssueCommentEvent:
+			err = h.IssueCommentEvent(event)
+		case *github.IssuesEvent:
+			err = h.IssuesEvent(event)
+		case *github.LabelEvent:
+			err = h.LabelEvent(event)
+		case *github.MarketplacePurchaseEvent:
+			err = h.MarketplacePurchaseEvent(event)
+		case *github.MemberEvent:
+			err = h.MemberEvent(event)
+		case *github.MembershipEvent:
+			err = h.MembershipEvent(event)
+		case *github.MilestoneEvent:
+			err = h.MilestoneEvent(event)
+		case *github.OrganizationEvent:
+			err = h.OrganizationEvent(event)
+		case *github.OrgBlockEvent:
+			err = h.OrgBlockEvent(event)
+		case *github.PageBuildEvent:
+			err = h.PageBuildEvent(event)
+		case *github.ProjectEvent:
+			err = h.ProjectEvent(event)
+		case *github.ProjectCardEvent:
+			err = h.ProjectCardEvent(event)
+		case *github.ProjectColumnEvent:
+			err = h.ProjectColumnEvent(event)
+		case *github.PublicEvent:
+			err = h.PublicEvent(event)
+		case *github.PullRequestEvent:
+			err = h.PullRequestEvent(event)
+		case *github.PullRequestReviewEvent:
+			err = h.PullRequestReviewEvent(event)
+		case *github.PullRequestReviewCommentEvent:
+			err = h.PullRequestReviewCommentEvent(event)
+		case *github.PushEvent:
+			err = h.PushEvent(event)
+		case *github.ReleaseEvent:
+			err = h.ReleaseEvent(event)
+		case *github.RepositoryEvent:
+			err = h.RepositoryEvent(event)
+		case *github.RepositoryVulnerabilityAlertEvent:
+			err = h.RepositoryVulnerabilityAlertEvent(event)
+		case *github.StatusEvent:
+			err = h.StatusEvent(event)
+		case *github.TeamEvent:
+			err = h.TeamEvent(event)
+		case *github.TeamAddEvent:
+			err = h.TeamAddEvent(event)
+		case *github.WatchEvent:
+			err = h.WatchEvent(event)
+		default:
+			err = fmt.Errorf("Unsupported event type: %s", pretty.Sprint(event))
+		}
+	*/
 	if err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 	}
 	return
 }
 
+/*
 func pingEventsSupported(event *github.PingEvent, supported []string) bool {
 	// Ping events occur during first registration.
 	// If we return without error, the webhook is registered successfully.
@@ -226,6 +300,32 @@ func pingEventsSupported(event *github.PingEvent, supported []string) bool {
 		}
 	}
 	return true
+}*/
+
+func allEventsSupported(h *Handler, event *github.PingEvent) bool {
+	// Ping events occur during first registration.
+	// If we return without error, the webhook is registered successfully.
+	for i := range event.Hook.Events {
+		eventName, ok := eventTypeMapping[event.Hook.Events[i]]
+		if !ok {
+			log.Printf("Unrecognized event type! %q", event.Hook.Events[i])
+			return false
+		}
+		// Lookup eventName in the handler struct.
+		r := reflect.Indirect(reflect.ValueOf(h))
+		handlerField := r.FieldByName(eventName)
+		// Verify that the field exists.
+		if reflect.DeepEqual(handlerField, reflect.Value{}) {
+			// That field does not exist in the header struct.
+			return false
+		}
+		// The field exists, but check whether it has a nil value.
+		if handlerField.IsNil() {
+			return false
+		}
+	}
+	// All fields exist and have a non-nil value.
+	return true
 }
 
 // httpError both logs the gien message and writes an error to the given response writer.
@@ -233,6 +333,8 @@ func httpError(w http.ResponseWriter, msg string, status int) {
 	log.Println(msg)
 	http.Error(w, msg, status)
 }
+
+/*
 
 func (h *Handler) initSupportedEvents() {
 	if len(h.supportedEvents) != 0 {
@@ -348,3 +450,4 @@ func (h *Handler) initSupportedEvents() {
 		h.supportedEvents = append(h.supportedEvents, "watch")
 	}
 }
+*/
