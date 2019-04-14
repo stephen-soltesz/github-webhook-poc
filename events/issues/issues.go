@@ -75,45 +75,73 @@ func (ev *Event) SetIssueLabels(ctx context.Context, labels []string) (
 
 // AddIssueLabel adds a label to the event issue.
 func (ev *Event) AddIssueLabels(
-	ctx context.Context, labels []string) (*github.Issue, *github.Response, error) {
+	ctx context.Context, labels []string) ([]*github.Label, *github.Response, error) {
 
-	// Check curent labels for the new label and collect the list.
-	currentLabels := []string{}
-	for _, current := range ev.GetIssue().Labels {
-		currentLabels = append(currentLabels, current.GetName())
-	}
-	// Append the new label to the current labels.
-	for _, label := range labels {
-		if !slice.ContainsString(currentLabels, label) {
-			currentLabels = append(currentLabels, label)
+	/*
+		// Check curent labels for the new label and collect the list.
+		currentLabels := []string{}
+		for _, current := range ev.GetIssue().Labels {
+			currentLabels = append(currentLabels, current.GetName())
 		}
-	}
-	if len(ev.GetIssue().Labels) == len(currentLabels) {
-		return nil, nil, nil
-	}
-	return ev.EditIssue(
-		ctx,
-		&github.IssueRequest{
-			Labels: &currentLabels,
-		},
-	)
-}
-
-// RemoveIssueLabel removes the given label from the event issue. If the label
-// is not found, no action is taken.
-func (ev *Event) RemoveIssueLabels(
-	ctx context.Context, labels []string) (*github.Issue, *github.Response, error) {
-
-	currentLabels := filterLabels(ev.GetIssue().Labels, labels)
-	if len(currentLabels) != len(ev.GetIssue().Labels) {
+		// Append the new label to the current labels.
+		for _, label := range labels {
+			if !slice.ContainsString(currentLabels, label) {
+				currentLabels = append(currentLabels, label)
+			}
+		}
+		if len(ev.GetIssue().Labels) == len(currentLabels) {
+			return nil, nil, nil
+		}
 		return ev.EditIssue(
 			ctx,
 			&github.IssueRequest{
 				Labels: &currentLabels,
 			},
 		)
+	*/
+	log.Println("Issues.AddLabelsToIssue:",
+		ev.GetRepo().GetOwner().GetLogin(),
+		ev.GetRepo().GetName(),
+		ev.GetIssue().GetNumber(), labels)
+
+	return ev.Issues.AddLabelsToIssue(
+		ctx,
+		ev.GetRepo().GetOwner().GetLogin(),
+		ev.GetRepo().GetName(),
+		ev.GetIssue().GetNumber(), labels)
+}
+
+// RemoveIssueLabels removes the given label from the event issue. If the label
+// is not found, no action is taken.
+func (ev *Event) RemoveIssueLabels(
+	ctx context.Context, labels []string) (*github.Response, error) {
+
+	/*
+		currentLabels := filterLabels(ev.GetIssue().Labels, labels)
+		if len(currentLabels) != len(ev.GetIssue().Labels) {
+			return ev.EditIssue(
+				ctx,
+				&github.IssueRequest{
+					Labels: &currentLabels,
+				},
+			)
+		}
+		return nil, nil, nil
+	*/
+	var resp *github.Response
+	var err error
+	for _, label := range labels {
+		resp, err = ev.Issues.RemoveLabelForIssue(ctx,
+			ev.GetRepo().GetOwner().GetLogin(),
+			ev.GetRepo().GetName(),
+			ev.GetIssue().GetNumber(), label)
+		if err != nil {
+			//TODO: skip 404 errors.
+			log.Println(err)
+			// return nil, err
+		}
 	}
-	return nil, nil, nil
+	return resp, nil
 }
 
 func filterLabels(labels []github.Label, remove []string) []string {

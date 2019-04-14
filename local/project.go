@@ -1,21 +1,12 @@
 package local
 
 import (
-	"context"
-	"log"
 	"sync"
-	"time"
-
-	"github.com/stephen-soltesz/github-webhook-poc/events/projects"
-
-	"github.com/stephen-soltesz/github-webhook-poc/githubx"
-
-	"github.com/google/go-github/github"
-	"github.com/stephen-soltesz/pretty"
 )
 
 var mux = sync.Mutex{}
 
+/*
 // ProjectCardEvent prints a card event.
 func ProjectCardEvent(event *github.ProjectCardEvent) error {
 	mux.Lock()
@@ -58,3 +49,5 @@ func ProjectEvent(event *github.ProjectEvent) error {
 	pretty.Print(event)
 	return nil
 }
+
+*/

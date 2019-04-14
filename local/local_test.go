@@ -15,13 +15,28 @@ import (
 type fakeIssues struct {
 	*github.Issue
 	*github.Response
-	Error error
+	Error  error
+	labels []*github.Label
 }
 
 func (f *fakeIssues) Edit(
 	ctx context.Context, owner string, repo string, number int,
 	issue *github.IssueRequest) (*github.Issue, *github.Response, error) {
 	return f.Issue, f.Response, f.Error
+}
+
+// AddLabelsToIssue adds the given lables to the issue number in the owner repo.
+func (f *fakeIssues) AddLabelsToIssue(
+	ctx context.Context, owner string, repo string, number int,
+	labels []string) ([]*github.Label, *github.Response, error) {
+	return f.labels, f.Response, f.Error
+}
+
+// RemoveLabelForIssue removes the given label from the repo issue.
+func (f *fakeIssues) RemoveLabelForIssue(
+	ctx context.Context, owner string, repo string, number int,
+	label string) (*github.Response, error) {
+	return f.Response, f.Error
 }
 
 func newLabel(label string) github.Label {
@@ -39,6 +54,9 @@ func TestNewConfig(t *testing.T) {
 }
 
 func TestConfig_IssuesEvent(t *testing.T) {
+	backlogLabel := newLabel("backlog")
+	currentLabel := newLabel("current")
+	closedLabel := newLabel("closed")
 	tests := []struct {
 		name            string
 		githubAuthToken string
@@ -76,6 +94,58 @@ func TestConfig_IssuesEvent(t *testing.T) {
 			event:           &github.IssuesEvent{Action: newString("opened")},
 			wantEventErr:    true,
 		},
+		{
+			name:            "successful-backlog-label",
+			githubAuthToken: "test",
+			issue: &github.Issue{
+				Labels: []github.Label{
+					newLabel("backlog"),
+				},
+			},
+			event: &github.IssuesEvent{
+				Action: newString("labeled"),
+				Label:  &backlogLabel,
+			},
+		},
+		{
+			name:            "successful-current-label",
+			githubAuthToken: "test",
+			issue: &github.Issue{
+				Labels: []github.Label{
+					newLabel("current"),
+				},
+			},
+			event: &github.IssuesEvent{
+				Action: newString("labeled"),
+				Label:  &currentLabel,
+			},
+		},
+		{
+			name:            "successful-closed-label",
+			githubAuthToken: "test",
+			issue: &github.Issue{
+				Labels: []github.Label{
+					newLabel("closed"),
+				},
+			},
+			event: &github.IssuesEvent{
+				Action: newString("labeled"),
+				Label:  &closedLabel,
+			},
+		},
+		{
+			name:            "successful-unlabel",
+			githubAuthToken: "test",
+			issue: &github.Issue{
+				Labels: []github.Label{
+					newLabel("bananas"),
+				},
+			},
+			event: &github.IssuesEvent{
+				Action: newString("unlabeled"),
+				Label:  &backlogLabel,
+			},
+		},
 	}
 	for _, tt := range tests {
 		getIface := func(client *github.Client) iface.Issues {
@@ -85,8 +155,13 @@ func TestConfig_IssuesEvent(t *testing.T) {
 					Error: fmt.Errorf("fake error"),
 				}
 			} else {
+				var labels []*github.Label
+				for i := range tt.issue.Labels {
+					labels = append(labels, &tt.issue.Labels[i])
+				}
 				return &fakeIssues{
-					Issue: tt.issue,
+					Issue:  tt.issue,
+					labels: labels,
 				}
 			}
 		}

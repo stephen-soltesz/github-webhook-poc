@@ -28,6 +28,8 @@ spec:
           value: "1"
         - name: GITHUB_PRIVATE_KEY
           value: /secrets/private-key.pem
+        - name: BOUNCE
+          value: "1"
 
         ports:
         - containerPort: 3000
