@@ -174,137 +174,44 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Println(pretty.Sprint(event))
 	}
 
+	// Get the event type name.
 	eventType := reflect.TypeOf(event).Elem().Name()
-	fmt.Println(eventType)
-	rHeader := reflect.Indirect(reflect.ValueOf(h))
-	fmt.Println(rHeader)
-	rHandlerFunc := rHeader.FieldByName(eventType)
-	fmt.Println(rHandlerFunc)
-
+	// Get a direct reference to the current Handler.
+	rHandler := reflect.Indirect(reflect.ValueOf(h))
+	// Lookup the field in the Handler with the same event type name.
+	rHandlerFunc := rHandler.FieldByName(eventType)
 	if reflect.DeepEqual(rHandlerFunc, reflect.Value{}) {
-		// We've received an event for an unsupported event type.
-		httpError(w, "Unsupported event: "+eventType, http.StatusNotImplemented)
+		// We've received an event for an unknown event type.
+		httpError(w, "Unknown event type: "+eventType, http.StatusNotImplemented)
 		return
 	}
-
 	if rHandlerFunc.IsNil() {
-		// We've received an event for a known event type, but somehow it is undefined.
-		// Normally, a "ping" event would discover this and the handler would fail to register.
-		// However, either the set of events could change across deployments.
+		// We've received an event for a known event type, but it is undefined.
+		// Normally, a "ping" event would discover this and the handler would fail to
+		// register. However, it's possible for the set of events to change across
+		// deployments after a successful "ping" event.
 		httpError(w, "Unimplemented handler func for: "+eventType, http.StatusNotImplemented)
 		return
 	}
 
-	// Handle all other event types using the corresponding event function.
-	vals := []reflect.Value{reflect.ValueOf(event)}
-	ret := rHandlerFunc.Call(vals)
+	log.Printf("Calling handler for %q", eventType)
+	// Call the handler function with current event.
+	args := []reflect.Value{reflect.ValueOf(event)}
+	ret := rHandlerFunc.Call(args)
 	err = nil
-	if !ret[0].IsNil() {
+	// Handler functions always return an error.
+	if len(ret) > 0 && !ret[0].IsNil() {
 		err = ret[0].Interface().(error)
 	}
-
-	/*
-		// Handle all other event types using the corresponding event function.
-		switch event := event.(type) {
-		case *github.CheckRunEvent:
-			err = h.CheckRunEvent(event)
-		case *github.CheckSuiteEvent:
-			err = h.CheckSuiteEvent(event)
-		case *github.CommitCommentEvent:
-			err = h.CommitCommentEvent(event)
-		case *github.CreateEvent:
-			err = h.CreateEvent(event)
-		case *github.DeleteEvent:
-			err = h.DeleteEvent(event)
-		case *github.DeploymentEvent:
-			err = h.DeploymentEvent(event)
-		case *github.DeploymentStatusEvent:
-			err = h.DeploymentStatusEvent(event)
-		case *github.ForkEvent:
-			err = h.ForkEvent(event)
-		case *github.GitHubAppAuthorizationEvent:
-			err = h.GitHubAppAuthorizationEvent(event)
-		case *github.GollumEvent:
-			err = h.GollumEvent(event)
-		case *github.InstallationEvent:
-			err = h.InstallationEvent(event)
-		case *github.InstallationRepositoriesEvent:
-			err = h.InstallationRepositoriesEvent(event)
-		case *github.IssueCommentEvent:
-			err = h.IssueCommentEvent(event)
-		case *github.IssuesEvent:
-			err = h.IssuesEvent(event)
-		case *github.LabelEvent:
-			err = h.LabelEvent(event)
-		case *github.MarketplacePurchaseEvent:
-			err = h.MarketplacePurchaseEvent(event)
-		case *github.MemberEvent:
-			err = h.MemberEvent(event)
-		case *github.MembershipEvent:
-			err = h.MembershipEvent(event)
-		case *github.MilestoneEvent:
-			err = h.MilestoneEvent(event)
-		case *github.OrganizationEvent:
-			err = h.OrganizationEvent(event)
-		case *github.OrgBlockEvent:
-			err = h.OrgBlockEvent(event)
-		case *github.PageBuildEvent:
-			err = h.PageBuildEvent(event)
-		case *github.ProjectEvent:
-			err = h.ProjectEvent(event)
-		case *github.ProjectCardEvent:
-			err = h.ProjectCardEvent(event)
-		case *github.ProjectColumnEvent:
-			err = h.ProjectColumnEvent(event)
-		case *github.PublicEvent:
-			err = h.PublicEvent(event)
-		case *github.PullRequestEvent:
-			err = h.PullRequestEvent(event)
-		case *github.PullRequestReviewEvent:
-			err = h.PullRequestReviewEvent(event)
-		case *github.PullRequestReviewCommentEvent:
-			err = h.PullRequestReviewCommentEvent(event)
-		case *github.PushEvent:
-			err = h.PushEvent(event)
-		case *github.ReleaseEvent:
-			err = h.ReleaseEvent(event)
-		case *github.RepositoryEvent:
-			err = h.RepositoryEvent(event)
-		case *github.RepositoryVulnerabilityAlertEvent:
-			err = h.RepositoryVulnerabilityAlertEvent(event)
-		case *github.StatusEvent:
-			err = h.StatusEvent(event)
-		case *github.TeamEvent:
-			err = h.TeamEvent(event)
-		case *github.TeamAddEvent:
-			err = h.TeamAddEvent(event)
-		case *github.WatchEvent:
-			err = h.WatchEvent(event)
-		default:
-			err = fmt.Errorf("Unsupported event type: %s", pretty.Sprint(event))
-		}
-	*/
 	if err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 	}
 	return
 }
 
-/*
-func pingEventsSupported(event *github.PingEvent, supported []string) bool {
-	// Ping events occur during first registration.
-	// If we return without error, the webhook is registered successfully.
-	for i := range event.Hook.Events {
-		if !slice.ContainsString(supported, event.Hook.Events[i]) {
-			return false
-		}
-	}
-	return true
-}*/
-
 func allEventsSupported(h *Handler, event *github.PingEvent) bool {
-	// Ping events occur during first registration.
-	// If we return without error, the webhook is registered successfully.
+	// Ping events occur during webhook registration.
+	// If we return true, the webhook is registered successfully.
 	for i := range event.Hook.Events {
 		eventName, ok := eventTypeMapping[event.Hook.Events[i]]
 		if !ok {
@@ -312,15 +219,14 @@ func allEventsSupported(h *Handler, event *github.PingEvent) bool {
 			return false
 		}
 		// Lookup eventName in the handler struct.
-		r := reflect.Indirect(reflect.ValueOf(h))
-		handlerField := r.FieldByName(eventName)
-		// Verify that the field exists.
+		rHandler := reflect.Indirect(reflect.ValueOf(h))
+		handlerField := rHandler.FieldByName(eventName)
 		if reflect.DeepEqual(handlerField, reflect.Value{}) {
 			// That field does not exist in the header struct.
 			return false
 		}
-		// The field exists, but check whether it has a nil value.
 		if handlerField.IsNil() {
+			// The field exists, but it has a nil value.
 			return false
 		}
 	}
@@ -333,121 +239,3 @@ func httpError(w http.ResponseWriter, msg string, status int) {
 	log.Println(msg)
 	http.Error(w, msg, status)
 }
-
-/*
-
-func (h *Handler) initSupportedEvents() {
-	if len(h.supportedEvents) != 0 {
-		// run initialization only once.
-		return
-	}
-	if h.CheckRunEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "check_run")
-	}
-	if h.CheckSuiteEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "check_suite")
-	}
-	if h.CommitCommentEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "commit_comment")
-	}
-	if h.CreateEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "create")
-	}
-	if h.DeleteEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "delete")
-	}
-	if h.DeploymentEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "deployment")
-	}
-	if h.DeploymentStatusEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "deployment_status")
-	}
-	if h.ForkEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "fork")
-	}
-	if h.GollumEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "gollum")
-	}
-	if h.InstallationEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "installation")
-	}
-	if h.InstallationRepositoriesEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "installation_repositories")
-	}
-	if h.IssueCommentEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "issue_comment")
-	}
-	if h.IssuesEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "issues")
-	}
-	if h.LabelEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "label")
-	}
-	if h.MarketplacePurchaseEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "marketplace_purchase")
-	}
-	if h.MemberEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "member")
-	}
-	if h.MembershipEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "membership")
-	}
-	if h.MilestoneEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "milestone")
-	}
-	if h.OrganizationEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "organization")
-	}
-	if h.OrgBlockEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "org_block")
-	}
-	if h.PageBuildEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "page_build")
-	}
-	if h.ProjectEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "project")
-	}
-	if h.ProjectCardEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "project_card")
-	}
-	if h.ProjectColumnEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "project_column")
-	}
-	if h.PublicEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "public")
-	}
-	if h.PullRequestReviewEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "pull_request_review")
-	}
-	if h.PullRequestReviewCommentEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "pull_request_review_comment")
-	}
-	if h.PullRequestEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "pull_request")
-	}
-	if h.PushEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "push")
-	}
-	if h.RepositoryEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "repository")
-	}
-	if h.RepositoryVulnerabilityAlertEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "repository_vulnerability_alert")
-	}
-	if h.ReleaseEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "release")
-	}
-	if h.StatusEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "status")
-	}
-	if h.TeamEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "team")
-	}
-	if h.TeamAddEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "team_add")
-	}
-	if h.WatchEvent != nil {
-		h.supportedEvents = append(h.supportedEvents, "watch")
-	}
-}
-*/
