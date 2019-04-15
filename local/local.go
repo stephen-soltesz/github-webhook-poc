@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stephen-soltesz/github-webhook-poc/events/issues/iface"
-	"github.com/stephen-soltesz/github-webhook-poc/slice"
 
 	"github.com/stephen-soltesz/pretty"
 
@@ -103,9 +102,13 @@ func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
 		case "backlog":
 			resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "current", "closed"})
 		case "current":
-			current = append(current, genSprintLabels(time.Now())...)
-			current = slice.FilterStrings(current, []string{"review/triage", "backlog", "closed"})
-			issue, resp, err = ev.SetIssueLabels(ctx, current)
+			_, resp, err = ev.AddIssueLabels(ctx, genSprintLabels(time.Now()))
+			if err == nil && len(current) != 0 {
+				resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "backlog", "closed"})
+			}
+			// current = append(current, genSprintLabels(time.Now())...)
+			// current = slice.FilterStrings(current, []string{"review/triage", "backlog", "closed"})
+			// issue, resp, err = ev.SetIssueLabels(ctx, current)
 		case "closed":
 			issue, resp, err = ev.CloseIssue(ctx, nil)
 		}
