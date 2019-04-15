@@ -188,9 +188,31 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			method:  http.MethodPost,
 			status:  http.StatusOK,
 		},
+		{
+			name: "push: without handler function",
+			fields: fields{
+				WebhookSecret: "test",
+				// PushEvent: not defined.
+			},
+			event:   "push",
+			payload: mustReadAll("testdata/push.json"),
+			method:  http.MethodPost,
+			status:  http.StatusNotImplemented,
+		},
+		{
+			name: "ping: unsupported event",
+			fields: fields{
+				WebhookSecret: "test",
+			},
+			event:   "ping",
+			payload: mustReadAll("testdata/ping-unsupported.json"),
+			method:  http.MethodPost,
+			status:  http.StatusNotImplemented,
+		},
 	}
 	for _, tt := range tests {
 		var r *http.Request
+		enableDebugLogging = "1"
 		if tt.breakWebhook {
 			r = newRequest(tt.method, tt.payload, "this is not the secret", tt.event)
 		} else {

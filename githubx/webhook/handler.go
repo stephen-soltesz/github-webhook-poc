@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"runtime"
+	"strconv"
 
 	"github.com/google/go-github/github"
 	"github.com/stephen-soltesz/pretty"
@@ -156,9 +158,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check for the PingEvent type to handle differently than all other events.
 	if event, ok := event.(*github.PingEvent); ok {
-		//if len(h.supportedEvents) == 0 {
-		//h.initSupportedEvents()
-		//}
 		log.Println("Zen:", event.GetZen())
 		if !allEventsSupported(h, event) {
 			// if !pingEventsSupported(event, h.supportedEvents) {
@@ -180,17 +179,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rHandler := reflect.Indirect(reflect.ValueOf(h))
 	// Lookup the field in the Handler with the same event type name.
 	rHandlerFunc := rHandler.FieldByName(eventType)
-	if reflect.DeepEqual(rHandlerFunc, reflect.Value{}) {
-		// We've received an event for an unknown event type.
-		httpError(w, "Unknown event type: "+eventType, http.StatusNotImplemented)
-		return
-	}
-	if rHandlerFunc.IsNil() {
-		// We've received an event for a known event type, but it is undefined.
-		// Normally, a "ping" event would discover this and the handler would fail to
-		// register. However, it's possible for the set of events to change across
-		// deployments after a successful "ping" event.
-		httpError(w, "Unimplemented handler func for: "+eventType, http.StatusNotImplemented)
+	if reflect.DeepEqual(rHandlerFunc, reflect.Value{}) || rHandlerFunc.IsNil() {
+		// We've received an event for an unknown event type. Or, We've received an
+		// event for a known event type, but it is undefined. Normally, a "ping" event
+		// would discover this and the handler would fail to register. However, it's
+		// possible for the set of events to change across deployments after a
+		// successful "ping" event.
+		httpError(w, "Unknown event or unimplemented handler for: "+eventType,
+			http.StatusNotImplemented)
 		return
 	}
 
@@ -221,12 +217,9 @@ func allEventsSupported(h *Handler, event *github.PingEvent) bool {
 		// Lookup eventName in the handler struct.
 		rHandler := reflect.Indirect(reflect.ValueOf(h))
 		handlerField := rHandler.FieldByName(eventName)
-		if reflect.DeepEqual(handlerField, reflect.Value{}) {
+		if reflect.DeepEqual(handlerField, reflect.Value{}) || handlerField.IsNil() {
 			// That field does not exist in the header struct.
-			return false
-		}
-		if handlerField.IsNil() {
-			// The field exists, but it has a nil value.
+			// Or, the field exists, but it has a nil value.
 			return false
 		}
 	}
@@ -236,6 +229,15 @@ func allEventsSupported(h *Handler, event *github.PingEvent) bool {
 
 // httpError both logs the gien message and writes an error to the given response writer.
 func httpError(w http.ResponseWriter, msg string, status int) {
-	log.Println(msg)
+	log.Println(getLine() + msg)
 	http.Error(w, msg, status)
+}
+
+func getLine() string {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		file = "???"
+		line = 0
+	}
+	return file + ":" + strconv.Itoa(line) + " "
 }
