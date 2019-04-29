@@ -52,11 +52,11 @@ func getIface(client *github.Client) iface.Issues {
 	return iface.NewIssues(client.Issues)
 }
 
-func genSprintLabels(now time.Time) []string {
+func genWeekLabels(now time.Time) []string {
 	year, week := now.ISOWeek()
-	sprintLabel := fmt.Sprintf("Sprint %d", (week+1)/2)
+	weekLabel := fmt.Sprintf("Week %d", week)
 	yearLabel := fmt.Sprintf("%d", year)
-	return []string{sprintLabel, yearLabel}
+	return []string{weekLabel, yearLabel}
 }
 
 // IssuesEvent .
@@ -102,7 +102,7 @@ func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
 		case "backlog":
 			resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "current", "closed"})
 		case "current":
-			_, resp, err = ev.AddIssueLabels(ctx, genSprintLabels(time.Now()))
+			_, resp, err = ev.AddIssueLabels(ctx, genWeekLabels(time.Now()))
 			if err == nil && len(current) != 0 {
 				resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "backlog", "closed"})
 			}
