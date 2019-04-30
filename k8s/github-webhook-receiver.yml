@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: github-webhook-receiver
-        image: soltesz/github-webhook-receiver:latest
+        image: soltesz/github-webhook-receiver:v0.0.8
         env:
         - name: WEBHOOK_HOSTNAME
           value: webhook-receiver.mlab-sandbox.measurementlab.net
