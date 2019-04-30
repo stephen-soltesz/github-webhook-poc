@@ -1,0 +1,44 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: github-webhook-receiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: github-webhook-receiver
+  template:
+    metadata:
+      labels:
+        run: github-webhook-receiver
+      annotations:
+        prometheus.io/scrape: 'false'
+    spec:
+      containers:
+      - name: github-webhook-receiver
+        image: soltesz/github-webhook-receiver:v0.0.8
+        env:
+        - name: WEBHOOK_HOSTNAME
+          value: webhook-receiver.mlab-sandbox.measurementlab.net
+        - name: GITHUB_WEBHOOK_SECRET
+          value: test 
+        - name: GITHUB_APP_ID
+          value: "23222"
+        - name: DEBUG_LOGGING
+          value: "1"
+        - name: GITHUB_PRIVATE_KEY
+          value: /secrets/private-key.pem
+        - name: BOUNCE
+          value: "1"
+
+        ports:
+        - containerPort: 3000
+
+        volumeMounts:
+        - mountPath: /secrets
+          name: private-key
+
+      volumes:
+      - name: private-key
+        configMap:
+          name: webhook-receiver-private-key

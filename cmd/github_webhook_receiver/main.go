@@ -8,29 +8,39 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/stephen-soltesz/github-webhook-poc/githubx/webhook"
 	"github.com/stephen-soltesz/github-webhook-poc/local"
-	"github.com/stephen-soltesz/github-webhook-poc/webhook"
 
 	// "github.com/kr/pretty"
-	"github.com/stephen-soltesz/github-webhook-poc/config"
-	"github.com/stephen-soltesz/github-webhook-poc/githubx"
+
+	"golang.org/x/crypto/acme/autocert"
 )
 
 const (
 	usage = `
 USAGE:
 
-  GitHub webhook receiver requires two environment variables at runtime:
+  GitHub webhook receiver is configured through environment variables.
 
-   * GITHUB_AUTH_TOKEN - to authenticate with the GitHub API
-   * GITHUB_WEBHOOK_SECRET - to validate the registered webhook
+  Set the webhook secret to match the secret used to register the receiver:
+  - GITHUB_WEBHOOK_SECRET
 
-ALLOCATE AUTH TOKEN:
+  For personal access token authentication:
+  - GITHUB_AUTH_TOKEN
+
+  For Github App authentication:
+  - GITHUB_PRIVATE_KEY - the path to filename containing private key.
+  - GITHUB_APP_ID - the application ID from registering the Github App.
+
+  For Let's Encrypt TLS certificate, you may provide a hostname:
+  - WEBHOOK_HOSTNAME
+
+PERSONAL ACCESS TOKENS:
 
   Allocate a "Personal Access Token" by visiting github.com:
-
-   * https://github.com/settings/tokens
+  - https://github.com/settings/tokens
 
 REGISTER WEBHOOK:
 
@@ -61,13 +71,17 @@ FLAGS:
 var (
 	authToken     string
 	webhookSecret string
+	privateKey    string
+	hostname      string
 	fListenAddr   string
 )
 
 func init() {
 	authToken = os.Getenv("GITHUB_AUTH_TOKEN")
 	webhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
-	flag.StringVar(&fListenAddr, "addr", ":8901", "The github user or organization name.")
+	privateKey = os.Getenv("GITHUB_PRIVATE_KEY")
+	hostname = os.Getenv("WEBHOOK_HOSTNAME")
+	flag.StringVar(&fListenAddr, "addr", ":3000", "The github user or organization name.")
 
 	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
 
@@ -85,24 +99,31 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if authToken == "" || webhookSecret == "" {
+	if (authToken == "" && privateKey == "") || webhookSecret == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	client := &local.Client{
-		Client: githubx.NewClient(authToken),
-		Repos:  config.Load(local.DefaultConfigURL),
-	}
+	config := local.NewConfig(time.Second)
 
-	handle := &webhook.Handler{
-		WebhookSecret: webhookSecret,
-		IssuesEvent:   client.IssuesEvent,
-		PushEvent:     client.PushEvent,
+	eventHandler := &webhook.Handler{
+		WebhookSecret:                 webhookSecret,
+		IssuesEvent:                   config.IssuesEvent,
+		InstallationEvent:             local.InstallationEvent,
+		InstallationRepositoriesEvent: local.InstallationRepositoriesEvent,
+		//ProjectCardEvent:              local.ProjectCardEvent,
+		//ProjectColumnEvent:            local.ProjectColumnEvent,
+		//ProjectEvent:                  local.ProjectEvent,
 	}
-	http.HandleFunc("/", usageHandler)
-	http.HandleFunc("/event_handler", handle.Request)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", usageHandler)
+	mux.Handle("/event_handler", eventHandler)
 
-	fmt.Println("Listening on ", fListenAddr)
-	log.Fatal(http.ListenAndServe(fListenAddr, nil))
+	log.Println("Starting listeners")
+	if hostname != "" {
+		log.Fatal(http.Serve(autocert.NewListener(hostname), mux))
+	} else {
+		fmt.Println("Listening on ", fListenAddr)
+		log.Fatal(http.ListenAndServe(fListenAddr, mux))
+	}
 }

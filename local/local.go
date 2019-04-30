@@ -1,90 +1,149 @@
 package local
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
 
-	"github.com/google/go-github/github"
-	"github.com/stephen-soltesz/github-webhook-poc/config"
-	"github.com/stephen-soltesz/github-webhook-poc/events/issues"
-	"github.com/stephen-soltesz/github-webhook-poc/slice"
+	"github.com/stephen-soltesz/github-webhook-poc/events/issues/iface"
+
 	"github.com/stephen-soltesz/pretty"
+
+	"github.com/stephen-soltesz/github-webhook-poc/githubx"
+
+	"github.com/google/go-github/github"
+	"github.com/stephen-soltesz/github-webhook-poc/events/issues"
 )
 
 var (
-	ConfigFilename   = "config.json"
-	DefaultConfigURL = "https://raw.githubusercontent.com/stephen-soltesz/public-issue-test/master/config.json"
+	// ErrNewClient is returned when a new Github client fails.
+	ErrNewClient = fmt.Errorf("Failed to allocate new Github client")
 )
 
-type Client struct {
-	*github.Client
-	config.Repos
+// Config contains
+type Config struct {
+	// Delay is
+	Delay time.Duration
+
+	getIface func(client *github.Client) iface.Issues
 }
 
-func (c *Client) PushEvent(event *github.PushEvent) error {
-	refs := strings.Split(event.GetRef(), "/")
-	log.Println(refs)
-	log.Println(refs[len(refs)-1])
-	branch := refs[len(refs)-1]
-
-	// TODO: parse full name.
-	log.Println(event.GetRepo().GetFullName())
-	for _, commit := range event.Commits {
-		log.Println(commit.GetID(), commit.Added, commit.Removed, commit.Modified)
-		if slice.ContainsString(commit.Added, ConfigFilename) ||
-			slice.ContainsString(commit.Removed, ConfigFilename) ||
-			slice.ContainsString(commit.Modified, ConfigFilename) {
-			// TODO: we should always use 'master' branch.
-			// Construct raw content url.
-			configURL := strings.Join(
-				[]string{"https://raw.githubusercontent.com",
-					event.GetRepo().GetFullName(),
-					branch,
-					ConfigFilename}, "/")
-			c.Repos = config.Load(configURL)
-			pretty.Print(c.Repos)
-			break
-		}
-	}
-	return nil
+// NewConfig creates a new config instantce.
+func NewConfig(delay time.Duration) *Config {
+	// Initialize the new config instance with a default getIface function.
+	return &Config{Delay: delay, getIface: getIface}
 }
 
-func (c *Client) IssuesEvent(event *github.IssuesEvent) error {
-	ev := issues.NewEvent(c.Client, event)
-	source := ev.GetRepo().GetHTMLURL()
-	if _, ok := c.Repos[source]; !ok {
-		log.Println("Ignoring:", source)
-		return nil
-	}
+// Client collects local data needed for these operations.
+type getInstallationer interface {
+	GetInstallation() *github.Installation
+}
 
-	log.Println("Issues:", source)
+func getSafeID(event getInstallationer) int64 {
+	if event.GetInstallation() != nil {
+		return event.GetInstallation().GetID()
+	}
+	return 0
+}
+
+func getIface(client *github.Client) iface.Issues {
+	return iface.NewIssues(client.Issues)
+}
+
+func genWeekLabels(now time.Time) []string {
+	year, week := now.ISOWeek()
+	weekLabel := fmt.Sprintf("Week %d", week)
+	yearLabel := fmt.Sprintf("%d", year)
+	return []string{weekLabel, yearLabel}
+}
+
+// IssuesEvent .
+func (c *Config) IssuesEvent(event *github.IssuesEvent) error {
+	client := githubx.NewClient(getSafeID(event))
+	if client == nil {
+		return ErrNewClient
+	}
+	ev := issues.NewEvent(c.getIface(client), event)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
 	// Lose the race for loading page load after "Submit new issue"
 	// so that the new label is visible to user.
-	time.Sleep(time.Second)
+	// time.Sleep(c.Delay)
+
 	var err error
 	var resp *github.Response
 	var issue *github.Issue
+	var labels []*github.Label
 
+	log.Println("IssuesEvent:", ev.GetAction(), ev.GetIssue().GetHTMLURL())
 	switch {
-	case event.GetAction() == "opened" || event.GetAction() == "reopened":
-		log.Println("Issues: open: ", event.GetIssue().GetHTMLURL())
-		issue, resp, err = ev.AddIssueLabel("review/triage")
-	case event.GetAction() == "closed":
-		log.Println("Issues: close:", event.GetIssue().GetHTMLURL())
-		issue, resp, err = ev.RemoveIssueLabel("review/triage")
+	case ev.GetAction() == "opened" || ev.GetAction() == "reopened":
+		pretty.Print(event)
+		labels, resp, err = ev.AddIssueLabels(ctx, []string{"review/triage"})
+	case ev.GetAction() == "closed":
+		pretty.Print(event)
+		resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage"})
+	case ev.GetAction() == "labeled":
+		// Note: the issue labels always include the label triggering the event.
+		fmt.Println("label")
+		pretty.Print(event)
+		current := []string{}
+		for _, label := range event.GetIssue().Labels {
+			current = append(current, label.GetName())
+		}
+		eventLabel := event.GetLabel().GetName()
+		fmt.Println("Event label:", eventLabel)
+		fmt.Println("Current labels:", current)
+		switch strings.ToLower(eventLabel) {
+		case "backlog":
+			resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "current", "closed"})
+		case "current":
+			_, resp, err = ev.AddIssueLabels(ctx, genWeekLabels(time.Now()))
+			if err == nil && len(current) != 0 {
+				resp, err = ev.RemoveIssueLabels(ctx, []string{"review/triage", "backlog", "closed"})
+			}
+			// current = append(current, genSprintLabels(time.Now())...)
+			// current = slice.FilterStrings(current, []string{"review/triage", "backlog", "closed"})
+			// issue, resp, err = ev.SetIssueLabels(ctx, current)
+		case "closed":
+			issue, resp, err = ev.CloseIssue(ctx, nil)
+		}
+	case ev.GetAction() == "unlabeled":
+		pretty.Print(event)
+		fmt.Println("unlabel")
 	default:
-		log.Println("Issues: ignoring unsupported action:", event.GetAction())
+		log.Println("IssuesEvent: ignoring unsupported action:", ev.GetAction())
 	}
 	if err != nil {
-		log.Println("Issues: error:       ", resp, err)
+		log.Println("IssuesEvent: error:       ", resp, err)
+	}
+	if labels != nil {
+		log.Println("IssuesEvent: okay: ", resp, labels)
 	}
 	if issue != nil {
 		labels := ""
 		for _, currentLabel := range issue.Labels {
 			labels += currentLabel.GetName() + " "
 		}
-		log.Println("Issues: okay: ", resp, labels)
+		log.Println("IssuesEvent: okay: ", resp, labels)
 	}
+	return nil
+}
+
+// InstallationEvent handles events when an application is installed for the
+// first time.
+func InstallationEvent(event *github.InstallationEvent) error {
+	pretty.Print(event)
+	return nil
+}
+
+// InstallationRepositoriesEvent handles events when repositories are added or
+// removed from a particular application installation.
+func InstallationRepositoriesEvent(event *github.InstallationRepositoriesEvent) error {
+	pretty.Print(event)
 	return nil
 }
